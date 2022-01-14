@@ -1,0 +1,43 @@
+*****************************************************************************
+* Copyright (c) 2019 NVIDIA Corporation.  All rights reserved.
+*
+* NVIDIA Corporation and its licensors retain all intellectual property
+* and proprietary rights in and to this software, related documentation
+* and any modifications thereto.  Any use, reproduction, disclosure or
+* distribution of this software and related documentation without an express
+* license agreement from NVIDIA Corporation is strictly prohibited.
+*****************************************************************************
+
+You must have the following development packages installed
+   GStreamer-1.0
+   GStreamer-1.0 Base Plugins
+   GStreamer-1.0 gstrtspserver
+   X11 client-side library
+
+To install these packages, execute the following command:
+   sudo apt-get install libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev \
+   libgstrtspserver-1.0-dev libx11-dev
+
+This demo shows the performance of deepstream, like flowers classification
+by TensorRT inference server in GTC show and the difference is that images input
+is changed to video input. Please check the below link:
+
+https://www.youtube.com/watch?v=8bbtAvMAI2c
+
+Pipeline:
+filesrc (switch)-> h264parser -> nvv4l2decoder -> nvstreammux -> pgie -> sgie1
+-> sgie2-> sgie3 -> nvvideoconvert -> nvdsosd -> (nvtransform) ->nveglglessink
+
+
+Usage and compilation steps:
+- Prepare a folder and put all h264 files in it
+- $ Set CUDA_VER in the MakeFile as per platform.
+      For Jetson, CUDA_VER=10.2
+      For x86, CUDA_VER=11.4
+-  $ sudo make
+
+To run:
+- $ ./deepstream-perf-demo <rows num> <columns num> <streams dir>
+    Note: It's better rows == columns
+
+NOTE: To compile the sources, run make with "sudo" or root permission.

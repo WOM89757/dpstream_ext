@@ -1,0 +1,144 @@
+*****************************************************************************
+* Copyright (c) 2020-2021 NVIDIA Corporation.  All rights reserved.
+*
+* NVIDIA Corporation and its licensors retain all intellectual property
+* and proprietary rights in and to this software, related documentation
+* and any modifications thereto.  Any use, reproduction, disclosure or
+* distribution of this software and related documentation without an express
+* license agreement from NVIDIA Corporation is strictly prohibited.
+*****************************************************************************
+
+
+1. The application runs with nvdsasr plugin for Automatic speech recognition.
+   To run with nvdsasr, make sure ASR model repository is already generated.
+       If not generated, follow below steps:
+       (Note: This application works with Riva Speech Skills 1.5.0-beta release only)
+   a. Prerequisites:
+      Refer https://docs.nvidia.com/deeplearning/riva/user-guide/docs/quick-start-guide.html#prerequisites for details.
+
+   b. Model repo setup:
+      Follow below commands to set up models :
+      $ngc registry resource download-version nvidia/riva/riva_quickstart:1.5.0-beta
+      $cd riva_quickstart_v1.5.0-beta
+
+      Update config.sh file with below data:
+      service_enabled_asr=true
+      service_enabled_nlp=false
+      service_enabled_tts=false
+
+      riva_model_loc="riva-asr-model-repo"
+
+      models_asr=(
+      "${riva_ngc_org}/${riva_ngc_team}/rmir_asr_citrinet_1024_asrset1p7_streaming:${riva_ngc_model_version}"
+      "${riva_ngc_org}/${riva_ngc_team}/rmir_nlp_punctuation_bert_base:${riva_ngc_model_version}"
+      )
+
+      #Run the riva_init.sh script
+      $sudo bash riva_init.sh
+
+      #Download Japser Models
+      #Download jasper_asr_SET_1pt2_nr.riva file
+      $wget https://api.ngc.nvidia.com/v2/models/nvidia/tao/speechtotext_english_jasper/versions/deployable_v1.2/files/jasper_asr_SET_1pt2_nr.riva
+
+      #Now we have to copy the jasper_asr_SET_1pt2_nr.riva file to /var/lib/docker/volumes/riva-asr-model-repo/_data/
+      #This needs root privilege. Use sudo su command
+      $sudo su
+      $cp <directory path of downloaded .riva file>/jasper_asr_SET_1pt2_nr.riva  /var/lib/docker/volumes/riva-asr-model-repo/_data/
+      $exit
+
+      #Make sure we are at riva_quickstart_v1.5.0-beta directory
+
+      # Set below environment variables:
+      $export RIVA_SM_CONTAINER="nvcr.io/nvidia/riva/riva-speech:1.5.0-beta-servicemaker"
+      $export MODEL_LOC="riva-asr-model-repo"
+      $export MODEL_NAME="jasper_asr_SET_1pt2_nr.riva"
+      $export KEY="tlt_encode"
+
+      # Build the docker image:
+      $sudo docker pull $RIVA_SM_CONTAINER
+
+      # Build Riva ASR model in streaming mode:
+      $sudo docker run --rm --gpus 0 -v $MODEL_LOC:/data $RIVA_SM_CONTAINER riva-build speech_recognition /data/asr.rmir:$KEY /data/$MODEL_NAME:$KEY --decoder_type=greedy
+
+      # Deploy Riva model in streaming mode:
+      $sudo docker run --rm --gpus 0 -v $MODEL_LOC:/data $RIVA_SM_CONTAINER riva-deploy -f /data/asr.rmir:$KEY /data/models/
+
+      With above steps, Jasper models are downloaded at /var/lib/docker/volumes/riva-asr-model-repo/_data/models/
+
+   c. gRPC installation and prerequisites:
+      # Use gRPC_installation.sh to install gRPC
+      $sudo chmod +x gRPC_installation.sh
+      $sudo ./gRPC_installation.sh
+      $source ~/.profile
+
+
+   d. Launch gRPC service before running deepstream-asr-app:
+
+      #Make sure below steps are followed  after section 1.c i.e "gRPC installation and prerequisites"
+      #Go to riva_quickstart_v1.5.0-beta directory
+      $cd riva_quickstart_v1.5.0-beta
+
+      #Run ASR service
+      $sudo bash riva_start.sh
+
+      # If the user wants to stop ASR services after the application has run successfully, run the following command.
+      $sudo bash riva_stop.sh
+
+   e. Set up environment to use gRPC libs
+      (i)  Testing application on x86:
+
+           Follow steps mentioned in section 1.d i.e. "Launch gRPC service before running deepstream-asr-app to launch the ASR service.
+
+           # Set LD_LIBRARY_PATH
+           $source ~/.profile
+
+           To run deepstream-asr-app, follow steps mentioned in section 2 i.e. "Steps to run application".
+      (ii) Testing application inside docker:
+
+           Note: This needs GPU memory more than 8GB.
+
+           Outside docker, follow section 1.d "Launch gRPC service before running deepstream-asr-app" to launch ASR service.
+           Once ASR service is running we need to run the docker.
+           $export DISPLAY=:0
+           $xhost +
+
+           $sudo docker run --rm -it --gpus '"'device=0'"' -v riva-asr-model-repo:/data -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix --net=host $DS_Docker
+           where $DS_Docker is the name of DeepStream docker image.
+
+           # Set LD_LIBRARY_PATH
+           $source ~/.profile
+
+           To run deepstream-asr-app, follow steps mentioned in section 2 i.e. "Steps to run application".
+
+
+2. Steps to run application:
+
+To compile :
+
+  $ Set CUDA_VER in the MakeFile as per platform.
+      For x86, CUDA_VER=11.4
+  $ sudo make
+
+NOTE: To compile the sources, run make with "sudo" or root permission.
+
+To run:
+  Follow steps 1.d and 1.e to launch ASR service and set LD_LIBRARY_PATH
+
+  $ ./deepstream-asr-app -c deepstream_asr.cfg
+
+  User must have write permission in the directory to store the
+  generated output file.
+
+This document shall describe about the sample deepstream_asr application.
+
+It is meant for simple demonstration of how to perform Automatic speech
+recognition(ASR) using "nvdsasr" gstreamer plugin.
+
+In this example application following operations are performed.
+1. Decode incoming speech data.
+2. Execute audio playback pipeline. If audio playback is not needed, it can be
+   disabled by setting  "enable_playback" to 0  in the configuration file.
+   Refer to the provided sample configuration file deepstream_asr.cfg
+3. Execute Automatic speech recognition. ASR Output of every stream is stored
+   in the output text file specified by "asr_output_file_name" in the
+   configuration file.

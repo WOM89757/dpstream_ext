@@ -1,0 +1,129 @@
+################################################################################
+# Copyright (c) 2018-2021, NVIDIA CORPORATION.  All rights reserved.
+#
+# NVIDIA Corporation and its licensors retain all intellectual property
+# and proprietary rights in and to this software, related documentation
+# and any modifications thereto.  Any use, reproduction, disclosure or
+# distribution of this software and related documentation without an express
+# license agreement from NVIDIA Corporation is strictly prohibited.
+#
+################################################################################
+
+This sample shows how to integrate a detector Model like FasterRCNN having layers
+supported through IPlugin interface by TensorRT and with custom output layer
+parsing for detected objects with DeepStreamSDK. The sample uses the
+IPluginFactory/IPluginFactoryV2 interface for configuring the fused RPN+ROI
+plugin provided by TensorRT. This sample also demonstrates how to initialize
+input layers when the network hase more than the one video frame input layer.
+This sample has been derived from TensorRT's sampleFasterRCNN.
+
+Besides that, This sample demonstrates a deepstream-triton based custom processing
+It illustrates how to derive nvdsinferserver::IInferCustomProcessor to implement
+extra input tensors customization for Triton backends and also how to get Triton
+inference data output and apply parsing and attaching nvds metadata through
+instantiating nvdsinferserver::IInferCustomProcessor interface.
+
+For comparison, there is also another deepstream-triton detection config to
+demonstrate the usual detection cases similarly with Gst-nvinfer plugin.
+--------------------------------------------------------------------------------
+Sample contents:
+- deepstream_app_config_fasterRCNN.txt - DeepStream reference app configuration
+  file for using FasterRCNN model as the primary detector.
+- config_infer_primary_fasterRCNN.txt - Configuration file for the GStreamer
+  nvinfer plugin for the FasterRCNN model.
+- nvdsinfer_custom_impl_fasterRCNN/nvdsiplugin_fasterRCNN.cpp -
+  IPluginFactoryV2 implementation for the fused "RPN+ROI" layer in the FasterRCNN
+  model. This implementation has been referred to from the TensorRT sample
+  sampleFasterRCNN.
+- nvdsinfer_custom_impl_fasterRCNN/nvdsparsebbox_fasterRCNN.cpp - Output layer
+  parsing function for detected objects for the FasterRCNN model.
+- nvdsinfer_custom_impl_fasterRCNN/nvdsinitinputlayers_fasterRCNN.cpp -
+  Implementation of NvDsInferInitializeInputLayers to initialize "im_info"
+  input layer.
+- factoryFasterRCNN.h - IPluginV2+IPluginFactoryV2 implementation
+
+More Sample contents for DeepStream Triton:
+- deepstream_app_triton_config_fasterRCNN.txt - DeepStream triton reference app
+  configuration for FasterRCNN model as the primary detector.
+- config_triton_inferserver_primary_fasterRCNN_detect.txt, an usual detection config
+  file for Gst-nvinferserver plugin.
+- config_triton_inferserver_primary_fasterRCNN_custom.txt, an custom processing config
+  file for Gst-nvinferserver plugin.
+- nvdsinferserver_custom_process.cpp - Example how to create an customized
+  nvdsinferserver::IInferCustomProcessor instance to do extra input processing,
+  output tensor parsing and output data attaching into nvds metadata. Besides
+  that, this custom processing interface could also support LSTM-based custom
+  loop process for single or multiple streams. update "#define REQUIRE_LOOP 1" to
+  see the sample.
+- triton_model_repo/fasterRCNN/config.pbtxt - Triton config file for FasterRCNN model
+- triton_model_repo/fasterRCNN/1/VGG16_faster_rcnn_final.caffemodel_b1_gpu0_fp32.engine -
+  A symlink file points to a prebuilt fasterRCNN TensorRT engine file. it requires user to
+  run "$ deepstream-app -c deepstream_app_config_fasterRCNN.txt" firstly to build this
+  plan engine file.
+
+--------------------------------------------------------------------------------
+Pre-requisites:
+- Download model tar file using:
+  $ wget --no-check-certificate \
+        https://dl.dropboxusercontent.com/s/o6ii098bu51d139/faster_rcnn_models.tgz?dl=0 \
+        -O faster-rcnn.tgz
+- Untar the model using:
+  $ tar zxvf faster-rcnn.tgz -C . --strip-components=1 --exclude=ZF_*
+- Copy the prototxt file "faster_rcnn_test_iplugin.prototxt" from the
+  data/faster-rcnn directory in TensorRT samples to this directory.
+
+Extra Pre-requisites for DeepStream Triton test.
+- If users want to run deepstream-triton reference app. It is required
+  run "$ deepstream-app -c deepstream_app_config_fasterRCNN.txt" to generate
+  VGG16_faster_rcnn_final.caffemodel_b1_gpu0_fp32.engine first.
+- For x86 platform, Users need to run inside nvcr.io/nvidia/deepstream:<tag>-triton
+  container.
+
+--------------------------------------------------------------------------------
+Compile the custom library:
+  $ make -C nvdsinfer_custom_impl_fasterRCNN
+
+NOTE: To compile the sources, run make with "sudo" or root permission.
+
+--------------------------------------------------------------------------------
+Run the sample for DeepStream TensorRT(Gst-nvinfer):
+The "nvinfer" config file config_infer_primary_fasterRCNN.txt specifies the path to
+the custom library and the custom output parsing function through the properties
+"custom-lib-path" and "parse-bbox-func-name" respectively.
+
+- With gst-launch-1.0
+  For Jetson:
+  $ gst-launch-1.0 filesrc location=../../samples/streams/sample_1080p_h264.mp4 ! \
+        decodebin ! m.sink_0 nvstreammux name=m batch-size=1 width=1920 \
+        height=1080 ! nvinfer config-file-path= config_infer_primary_fasterRCNN.txt ! \
+        nvvideoconvert ! nvdsosd ! nvegltransform ! nveglglessink sync=0
+  For dGPU:
+  $ gst-launch-1.0 filesrc location=../../samples/streams/sample_1080p_h264.mp4 ! \
+        decodebin ! m.sink_0 nvstreammux name=m batch-size=1 width=1920 \
+        height=1080 ! nvinfer config-file-path= config_infer_primary_fasterRCNN.txt ! \
+        nvvideoconvert ! nvdsosd ! nveglglessink sync=0
+
+- With deepstream-app
+  $ deepstream-app -c deepstream_app_config_fasterRCNN.txt
+
+NOTE: TensorRT samples of fasterRCNN are located in /usr/src/tensorrt directory.
+
+--------------------------------------------------------------------------------
+Run the sample for DeepStream Triton(Gst-nvinferserver):
+- Custom extra input preprocessing and custom output data parsing and attaching.
+  Update file deepstream_app_triton_config_fasterRCNN.txt and enable
+  "config-file=config_triton_inferserver_primary_fasterRCNN_custom.txt",
+  Run cmdline:
+  $ deepstream-app -c deepstream_app_triton_config_fasterRCNN.txt
+
+- Usual DeepStream Triton detection tests for FasterRCNN model.
+  Update file deepstream_app_triton_config_fasterRCNN.txt and enable
+  "config-file=config_triton_inferserver_primary_fasterRCNN_detect.txt",
+  Run cmdline:
+  $ deepstream-app -c deepstream_app_triton_config_fasterRCNN.txt
+
+- For the above 2 tests, if user compiled nvdsinfer_custom_impl_fasterRCNN manually,
+  need to update config_triton_inferserver_primary_fasterRCNN_xxx.txt file with
+  infer_config{ custom_lib{
+      path: "nvdsinfer_custom_impl_fasterRCNN/libnvdsinfer_custom_impl_process.so"
+  } }

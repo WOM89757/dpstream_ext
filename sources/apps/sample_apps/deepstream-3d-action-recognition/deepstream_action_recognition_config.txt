@@ -1,0 +1,63 @@
+################################################################################
+# Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
+################################################################################
+
+# deepstream action recognition config settings.
+# run:
+# $ deepstream-3d-action-recognition -c deepstream_action_recognition_config.txt
+
+[action-recognition]
+
+# stream/file source list
+uri-list=file:///opt/nvidia/deepstream/deepstream-6.0/samples/streams/sample_walk.mov;file:///opt/nvidia/deepstream/deepstream-6.0/samples/streams/sample_ride_bike.mov;file:///opt/nvidia/deepstream/deepstream-6.0/samples/streams/sample_run.mov;file:///opt/nvidia/deepstream/deepstream-6.0/samples/streams/sample_push.mov
+
+# eglglessink settings
+display-sync=1
+
+
+# <preprocess-config> is the config file path for nvdspreprocess plugin
+# <infer-config> is the config file path for nvinfer plugin
+
+# Enable 3D preprocess and inference
+preprocess-config=config_preprocess_3d_custom.txt
+infer-config=config_infer_primary_3d_action.txt
+
+# Uncomment to enable 2D preprocess and inference
+#preprocess-config=config_preprocess_2d_custom.txt
+#infer-config=config_infer_primary_2d_action.txt
+
+# nvstreammux settings
+muxer-height=720
+muxer-width=1280
+
+# nvstreammux batched push timeout in usec
+muxer-batch-timeout=40000
+
+
+# nvmultistreamtiler settings
+tiler-height=720
+tiler-width=1280
+
+# Log debug level. 0: disabled. 1: debug. 2: verbose.
+debug=0
+
+# Enable fps print on screen. 0: disable. 1: enable
+enable-fps=1

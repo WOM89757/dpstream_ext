@@ -1,0 +1,43 @@
+################################################################################
+# Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
+#
+# NVIDIA Corporation and its licensors retain all intellectual property
+# and proprietary rights in and to this software, related documentation
+# and any modifications thereto.  Any use, reproduction, disclosure or
+# distribution of this software and related documentation without an express
+# license agreement from NVIDIA Corporation is strictly prohibited.
+#
+################################################################################
+
+This sample shows how to use a re-identification model for multi-object tracking
+like DeepSORT on dGPU and Jetson.
+
+--------------------------------------------------------------------------------
+Pre-requisites:
+- Visit official DeepSORT GitHub repo https://github.com/nwojke/deep_sort
+  In section "Installation", there is a link to the pre-trained re-identification
+  model. Download the model file `networks/mars-small128.pb` and place it under
+  the current directory `sources/tracker_DeepSORT/`.
+- Generate UFF model from TensorFlow frozen graph. The generation process can be
+  done on both dGPU and Jetson; or the UFF model can be generated on dGPU first
+  and copied to Jetson.
+  1. Make sure TensorRT's uff-converter-tf and graphsurgeon-tf packages are installed.
+  2. Install tensorflow-gpu (version 1.15 recommended) for python3:
+     For dGPU:
+       $ pip install tensorflow-gpu
+     For Jetson, refer to https://elinux.org/Jetson_Zoo#TensorFlow
+  3. Run provided script to convert the model:
+     $ python3 convert.py mars-small128.pb
+- Copy converted file to destination location on dGPU or Jetson.
+  mkdir /opt/nvidia/deepstream/deepstream/samples/models/Tracker/ &&
+  cp mars-small128.uff /opt/nvidia/deepstream/deepstream/samples/models/Tracker/
+  Make sure the UFF file path is consistent with `uffFile` in DeepSORT config.
+
+--------------------------------------------------------------------------------
+Run the sample:
+- Enter `samples/configs/deepstream-app/`. In deepstream-app config, change
+  [tracker] config to use DeepSORT:
+  ll-config-file=config_tracker_DeepSORT.yml
+  DeepSORT tracker parameters are in `config_tracker_DeepSORT.yml`.
+- Run deepstream-app
+  deepstream-app -c <path to config.txt>

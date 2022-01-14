@@ -1,0 +1,54 @@
+%YAML 1.2
+################################################################################
+# Copyright (c) 2021 NVIDIA Corporation.  All rights reserved.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
+################################################################################
+
+---
+name: riva_server
+detail:
+  server_uri: "localhost:50051"
+
+---
+name: riva_model
+detail:
+  model_name: riva-asr
+
+---
+name: riva_asr_stream
+detail:
+  encoding: LINEAR_PCM
+  sample_rate_hertz: 16000
+  language_code: en-US
+  max_alternatives: 1
+  # Enables punctuation if punctuator_model is installed, otherwise keep false.
+  enable_automatic_punctuation: true
+  max_idle_microseconds: 60000000
+
+---
+name: ds_riva_asr_plugin
+detail:
+  final_only: false
+  enable_text_pts: true
+  # Select PTS calculation scheme:
+  #   false - use PTS of latest audio input buffer
+  #   true - use PTS and duration derived from Riva WordInfo start_time and end_time
+  use_riva_pts: false
+  force_final_trailing: false
