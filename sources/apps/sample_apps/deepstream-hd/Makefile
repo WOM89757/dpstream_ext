@@ -25,10 +25,10 @@ ifeq ($(CUDA_VER),)
   $(error "CUDA_VER is not set")
 endif
 
-APP:= deepstream-test1-app
+APP:= deepstream-hd-app
+# CC = g++
 
 TARGET_DEVICE = $(shell gcc -dumpmachine | cut -f1 -d -)
-
 NVDS_VERSION:=6.0
 
 LIB_INSTALL_DIR?=/opt/nvidia/deepstream/deepstream-$(NVDS_VERSION)/lib/

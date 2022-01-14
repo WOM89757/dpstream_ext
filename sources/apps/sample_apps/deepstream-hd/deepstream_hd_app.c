@@ -116,6 +116,98 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
     return GST_PAD_PROBE_OK;
 }
 
+/* osd_sink_pad_buffer_probe  will extract metadata received on OSD sink pad
+ * and update params for drawing rectangle, object information etc. */
+typedef struct
+{
+  float left;
+  float top;
+  float width;
+  float height;
+  char label[10];
+} DsExampleObject;
+static GstPadProbeReturn
+pgie_queue_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
+    gpointer u_data)
+{
+    GstBuffer *buf = (GstBuffer *) info->data;
+    guint num_rects = 0; 
+    NvDsObjectMeta *obj_meta = NULL;
+    guint vehicle_count = 0;
+    guint person_count = 0;
+    NvDsMetaList * l_frame = NULL;
+    NvDsMetaList * l_obj = NULL;
+    NvDsDisplayMeta *display_meta = NULL;
+    NvDsObjectMeta *object_meta = NULL;
+
+
+    NvDsBatchMeta *batch_meta = gst_buffer_get_nvds_batch_meta (buf);
+    NvDsFrameMeta *frame_meta = NULL;
+    DsExampleObject obj = {5, 10, 800, 1300, 'r'};
+    gdouble scale_ratio = 1.0;
+    guint batch_id = 0;
+    static gchar font_name[] = "Serif";
+
+    for (l_frame = batch_meta->frame_meta_list; l_frame != NULL;
+      l_frame = l_frame->next) {
+        frame_meta = (NvDsFrameMeta *) (l_frame->data);
+        object_meta = nvds_acquire_obj_meta_from_pool(batch_meta);
+        NvOSD_RectParams *rect_params = &object_meta->rect_params;
+        NvOSD_TextParams *text_params = &object_meta->text_params;
+
+        
+        // NvOSD_RectParams & rect_params = object_meta->rect_params;
+        // NvOSD_TextParams & text_params = object_meta->text_params;
+
+        /* Assign bounding box coordinates */
+        rect_params->left = obj.left;
+        rect_params->top = obj.top;
+        rect_params->width = obj.width;
+        rect_params->height = obj.height;
+
+        /* Semi-transparent yellow background */
+        rect_params->has_bg_color = 0;
+        rect_params->bg_color = (NvOSD_ColorParams) {
+        1, 1, 0, 0.4};
+        /* Red border of width 6 */
+        rect_params->border_width = 3;
+        rect_params->border_color = (NvOSD_ColorParams) {
+        1, 0, 0, 1};
+
+        /* Scale the bounding boxes proportionally based on how the object/frame was
+        * scaled during input */
+        rect_params->left /= scale_ratio;
+        rect_params->top /= scale_ratio;
+        rect_params->width /= scale_ratio;
+        rect_params->height /= scale_ratio;
+        g_print ("Add region rect batch%u"
+            "  left->%f top->%f width->%f"
+            " height->%f label->%s\n", batch_id, rect_params->left,
+            rect_params->top, rect_params->width, rect_params->height, obj.label);
+
+        object_meta->object_id = UNTRACKED_OBJECT_ID;
+        g_strlcpy (object_meta->obj_label, obj.label, MAX_LABEL_SIZE);
+        /* display_text required heap allocated memory */
+        text_params->display_text = g_strdup (obj.label);
+        /* Display text above the left top corner of the object */
+        text_params->x_offset = rect_params->left;
+        text_params->y_offset = rect_params->top - 10;
+        /* Set black background for the text */
+        text_params->set_bg_clr = 1;
+        text_params->text_bg_clr = (NvOSD_ColorParams) {
+        0, 0, 0, 1};
+        /* Font face, size and color */
+        text_params->font_params.font_name = font_name;
+        text_params->font_params.font_size = 11;
+        text_params->font_params.font_color = (NvOSD_ColorParams) {
+        1, 1, 1, 1};
+
+        nvds_add_obj_meta_to_frame(frame_meta, object_meta, NULL);
+        batch_id++;
+    }
+    return GST_PAD_PROBE_OK;
+}
+
 static gboolean
 bus_call (GstBus * bus, GstMessage * msg, gpointer data)
 {
@@ -149,13 +241,13 @@ main (int argc, char *argv[])
 {
   GMainLoop *loop = NULL;
   GstElement *pipeline = NULL, *source = NULL, *h264parser = NULL,
-      *decoder = NULL, *streammux = NULL, *sink = NULL, *pgie = NULL, *nvvidconv = NULL, *nvvidconv1 = NULL,
+      *decoder = NULL, *streammux = NULL, *sink = NULL, *pgie = NULL, *nvvidconv = NULL, *nvvidconv1 = NULL, *pgine_queue = NULL,
       *nvosd = NULL;
 
   GstElement *transform = NULL;
   GstBus *bus = NULL;
   guint bus_watch_id;
-  GstPad *osd_sink_pad = NULL;
+  GstPad *osd_sink_pad = NULL, *pgie_queue_sink_pad = NULL;
 
   int current_device = -1;
   cudaGetDevice(&current_device);
@@ -173,7 +265,7 @@ main (int argc, char *argv[])
 
   /* Create gstreamer elements */
   /* Create Pipeline element that will form a connection of other elements */
-  pipeline = gst_pipeline_new ("dstest1-pipeline");
+  pipeline = gst_pipeline_new ("dshd-pipeline");
 
   /* Source element for reading from the file */
   source = gst_element_factory_make ("filesrc", "file-source");
@@ -193,6 +285,8 @@ main (int argc, char *argv[])
     return -1;
   }
 
+
+  pgine_queue = gst_element_factory_make ("queue", "queue-primary-nvinference-engine");
   /* Use nvinfer to run inferencing on decoder's output,
    * behaviour of inferencing is set through config file */
   pgie = gst_element_factory_make ("nvinfer", "primary-nvinference-engine");
@@ -215,7 +309,7 @@ main (int argc, char *argv[])
   sink = gst_element_factory_make ("fpsdisplaysink", "nvvideo-renderer");
   // sink = gst_element_factory_make ("nveglglessink", "nvvideo-renderer");
 
-  if (!source || !h264parser || !decoder || !pgie
+  if (!source || !h264parser || !decoder || !pgine_queue || !pgie
       || !nvvidconv || !nvvidconv1 || !nvosd || !sink) {
     g_printerr ("One element could not be created. Exiting.\n");
     return -1;
@@ -238,7 +332,10 @@ main (int argc, char *argv[])
   /* Set all the necessary properties of the nvinfer element,
    * the necessary ones are : */
   g_object_set (G_OBJECT (pgie),
-      "config-file-path", "dstest1_pgie_config.txt", NULL);
+      "config-file-path", "dshd_pgie_config.txt", 
+      "infer-on-class-ids", "0",
+      "process-mode", 2,
+      NULL);
 
   /* we add a message handler */
   bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline));
@@ -249,12 +346,12 @@ main (int argc, char *argv[])
   /* we add all elements into the pipeline */
   if(prop.integrated) {
     gst_bin_add_many (GST_BIN (pipeline),
-        source, h264parser, decoder, streammux, pgie,
+        source, h264parser, decoder, streammux, pgine_queue, pgie,
         nvvidconv, nvosd, transform, sink, NULL);
   }
   else {
   gst_bin_add_many (GST_BIN (pipeline),
-      source, h264parser, decoder, streammux, pgie,
+      source, h264parser, decoder, streammux, pgine_queue, pgie,
       nvvidconv, nvosd, nvvidconv1, sink, NULL);
   }
 
@@ -292,14 +389,14 @@ main (int argc, char *argv[])
   }
 
   if(prop.integrated) {
-    if (!gst_element_link_many (streammux, pgie,
+    if (!gst_element_link_many (streammux, pgine_queue, pgie,
         nvvidconv, nvosd, transform, sink, NULL)) {
       g_printerr ("Elements could not be linked: 2. Exiting.\n");
       return -1;
     }
   }
   else {
-    if (!gst_element_link_many (streammux, pgie,
+    if (!gst_element_link_many (streammux, pgine_queue, pgie,
         nvvidconv, nvosd, nvvidconv1, sink, NULL)) {
       g_printerr ("Elements could not be linked: 2. Exiting.\n");
       return -1;
@@ -316,6 +413,14 @@ main (int argc, char *argv[])
     gst_pad_add_probe (osd_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
         osd_sink_pad_buffer_probe, NULL, NULL);
   gst_object_unref (osd_sink_pad);
+
+  pgie_queue_sink_pad = gst_element_get_static_pad (pgine_queue, "sink");
+  if (!pgie_queue_sink_pad)
+    g_print ("Unable to get sink pad\n");
+  else
+    gst_pad_add_probe (pgie_queue_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
+        pgie_queue_sink_pad_buffer_probe, NULL, NULL);
+  gst_object_unref (pgie_queue_sink_pad);
 
   /* Set the pipeline to "playing" state */
   g_print ("Now playing: %s\n", argv[1]);
