@@ -276,6 +276,8 @@ typedef struct NvDsEventMsgMeta {
   gpointer extMsg;
   /** Holds the size of the custom object at @a extMsg. */
   guint extMsgSize;
+
+  gchar *tagsStr;
 } NvDsEventMsgMeta;
 
 /**
