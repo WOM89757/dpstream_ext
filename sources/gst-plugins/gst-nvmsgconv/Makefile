@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2018-2020 NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2018-2021 NVIDIA CORPORATION.  All rights reserved.
 #
 # NVIDIA Corporation and its licensors retain all intellectual property
 # and proprietary rights in and to this software, related documentation
@@ -20,7 +20,7 @@ NVDS_VERSION:=6.0
 GST_INSTALL_DIR?=/opt/nvidia/deepstream/deepstream-$(NVDS_VERSION)/lib/gst-plugins/
 LIB_INSTALL_DIR?=/opt/nvidia/deepstream/deepstream-$(NVDS_VERSION)/lib/
 
-CFLAGS+= -fPIC -DDS_VERSION=\"6.0.0\" \
+CFLAGS+= -fPIC -DDS_VERSION=\"6.0.1\" \
 	 -I../../includes \
 	 -I../../libs/nvmsgconv/
 

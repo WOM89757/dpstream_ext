@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2020-2021, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2020-2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # NVIDIA Corporation and its licensors retain all intellectual property
 # and proprietary rights in and to this software, related documentation
@@ -24,6 +24,7 @@ at runtime. Two low level libraries are available:
    customlib-name=libnvds_riva_asr_grpc.so
    create-speech-ctx-func=create_riva_asr_grpc_ctx
 Refer to the DeepStream SDK documentation for a description of the plugin.
+https://docs.nvidia.com/metropolis/deepstream/dev-guide/text/DS_plugin_gst-nvdsasr.html
 
 --------------------------------------------------------------------------------
 Pre-requisites:
@@ -47,7 +48,17 @@ Install Riva ASR (automatic speech recognition)
 
 --------------------------------------------------------------------------------
 How to test Riva ASR:
+
+Start Riva ASR service. Follow deepstream-avsync-app README for prerequisutes
+and to start Riva ASR service.
+
+Configure parameters inside "ds_riva_asr_plugin" group
+available in the riva_asr_grpc_jasper_conf.yml file as below:
+   final_only: false
+   use_riva_pts: true
+   enable_text_pts: true
+
    $ gst-launch-1.0 -v -e uridecodebin \
-     uri=file:///test/example/0000.wav ! audioresample ! \
-     nvdsasr config-file=riva_asr_conf.yml ! txt. videotestsrc ! \
+     uri=file:///opt/nvidia/deepstream/deepstream-6.0/sources/apps/audio_apps/deepstream_asr_app/streams/1272-135031-0000.wav ! audioresample ! \
+     nvdsasr customlib-name=libnvds_riva_asr_grpc.so create-speech-ctx-func=create_riva_asr_grpc_ctx config-file=riva_asr_grpc_jasper_conf.yml ! txt. videotestsrc pattern=black ! \
      textoverlay name=txt shaded-background=yes !  autovideosink

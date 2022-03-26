@@ -31,6 +31,7 @@
 
 #define CONFIG_GROUP_TESTS "tests"
 #define CONFIG_GROUP_TESTS_FILE_LOOP "file-loop"
+#define CONFIG_GROUP_TESTS_PIPELINE_RECREATE_SEC "pipeline-recreate-sec"
 
 #define CONFIG_GROUP_SOURCE_SGIE_BATCH_SIZE "sgie-batch-size"
 
@@ -175,6 +176,11 @@ parse_tests (NvDsConfig *config, GKeyFile *key_file)
       config->file_loop =
           g_key_file_get_integer (key_file, CONFIG_GROUP_TESTS,
           CONFIG_GROUP_TESTS_FILE_LOOP, &error);
+      CHECK_ERROR (error);
+    } else if (!g_strcmp0 (*key, CONFIG_GROUP_TESTS_PIPELINE_RECREATE_SEC)) {
+      config->pipeline_recreate_sec =
+          g_key_file_get_integer (key_file, CONFIG_GROUP_TESTS,
+          CONFIG_GROUP_TESTS_PIPELINE_RECREATE_SEC, &error);
       CHECK_ERROR (error);
     } else {
       NVGSTDS_WARN_MSG_V ("Unknown key '%s' for group [%s]", *key,

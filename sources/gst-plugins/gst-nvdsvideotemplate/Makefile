@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2020-2021, NVIDIA CORPORATION.  All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -35,7 +35,7 @@ LIB:=libnvdsgst_videotemplate.so
 
 NVDS_VERSION:=6.0
 
-CFLAGS+= -fPIC -DDS_VERSION=\"6.0.0\" \
+CFLAGS+= -fPIC -DDS_VERSION=\"6.0.1\" \
 	 -I /usr/local/cuda-$(CUDA_VER)/include \
 	 -I ../../includes -I ./includes \
 	 -std=c++17 -Wall -Werror

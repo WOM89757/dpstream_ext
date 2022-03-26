@@ -20,10 +20,6 @@ Dependencies:
  sudo apt-get update
  sudo apt-get install -y libcurl4-openssl-dev libssl-dev uuid-dev libglib2.0 libglib2.0-dev
 
-#If your host machine is x86 and using ubuntu 18.04, additionally install the below
- sudo apt-get install -y libcurl3
-
-
 Azure cfg:
 ----------
 You can add Azure connection and message details in the cfg file.

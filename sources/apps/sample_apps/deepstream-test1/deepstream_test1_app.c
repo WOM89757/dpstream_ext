@@ -149,7 +149,7 @@ main (int argc, char *argv[])
 {
   GMainLoop *loop = NULL;
   GstElement *pipeline = NULL, *source = NULL, *h264parser = NULL,
-      *decoder = NULL, *streammux = NULL, *sink = NULL, *pgie = NULL, *nvvidconv = NULL, *nvvidconv1 = NULL,
+      *decoder = NULL, *streammux = NULL, *sink = NULL, *pgie = NULL, *nvvidconv = NULL,
       *nvosd = NULL;
 
   GstElement *transform = NULL;
@@ -206,17 +206,11 @@ main (int argc, char *argv[])
   /* Finally render the osd output */
   if(prop.integrated) {
     transform = gst_element_factory_make ("nvegltransform", "nvegl-transform");
-    g_printerr ("prop.integrated.\n");
-  }else {
-    g_printerr ("prop.integrated is 0.\n");
   }
-
-  nvvidconv1 = gst_element_factory_make ("nvvideoconvert", "nvvideo-converter1");
-  sink = gst_element_factory_make ("fpsdisplaysink", "nvvideo-renderer");
-  // sink = gst_element_factory_make ("nveglglessink", "nvvideo-renderer");
+  sink = gst_element_factory_make ("nveglglessink", "nvvideo-renderer");
 
   if (!source || !h264parser || !decoder || !pgie
-      || !nvvidconv || !nvvidconv1 || !nvosd || !sink) {
+      || !nvvidconv || !nvosd || !sink) {
     g_printerr ("One element could not be created. Exiting.\n");
     return -1;
   }
@@ -255,7 +249,7 @@ main (int argc, char *argv[])
   else {
   gst_bin_add_many (GST_BIN (pipeline),
       source, h264parser, decoder, streammux, pgie,
-      nvvidconv, nvosd, nvvidconv1, sink, NULL);
+      nvvidconv, nvosd, sink, NULL);
   }
 
   GstPad *sinkpad, *srcpad;
@@ -300,7 +294,7 @@ main (int argc, char *argv[])
   }
   else {
     if (!gst_element_link_many (streammux, pgie,
-        nvvidconv, nvosd, nvvidconv1, sink, NULL)) {
+        nvvidconv, nvosd, sink, NULL)) {
       g_printerr ("Elements could not be linked: 2. Exiting.\n");
       return -1;
     }

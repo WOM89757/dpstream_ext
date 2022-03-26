@@ -128,8 +128,8 @@ sources/apps/sample_apps/deepstream-test4/ to send messages to the cloud.
 --------------------------------------------------------------------------------
 Extract and Install DeepStream SDK
 --------------------------------------------------------------------------------
-1. Untar deepstream_sdk_v6.0.0_x86_64.tbz2
-   sudo tar -xvf deepstream_sdk_v6.0.0_x86_64.tbz2 -C /
+1. Untar deepstream_sdk_v6.0.1_x86_64.tbz2
+   sudo tar -xvf deepstream_sdk_v6.0.1_x86_64.tbz2 -C /
 2. The samples, sources and install script will be found in:
    /opt/nvidia/deepstream/deepstream-6.0/
 3. Run the install.sh script as follows:

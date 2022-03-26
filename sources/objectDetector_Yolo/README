@@ -67,9 +67,11 @@ Compile the custom library:
   # set the macro USE_CUDA_ENGINE_GET_API to 0 or 1 in
   # nvdsinfer_custom_impl_Yolo/nvdsinfer_yolo_engine.cpp
 
-  # Export correct CUDA version (e.g. 10.2, 10.1)
-  $ export CUDA_VER=10.2
-  $ make -C nvdsinfer_custom_impl_Yolo
+  # Export correct CUDA version as per the platform
+  For Jetson:  $ export CUDA_VER=10.2
+  For x86:     $ export CUDA_VER=11.4
+
+  $ sudo -E make -C nvdsinfer_custom_impl_Yolo
 
 NOTE: To compile the sources, run make with "sudo" or root permission.
 

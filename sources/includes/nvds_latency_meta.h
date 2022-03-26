@@ -150,6 +150,23 @@ guint nvds_measure_buffer_latency(GstBuffer *buf,
 gboolean nvds_get_enable_latency_measurement(void);
 
 /**
+ * Adds the reference timestamp metadata for this buffer
+ * Note: element_name == "audiodecoder" and "nvv4l2decoder" will be used for
+ * latency measurement calculations where the timestamp will be used
+ * by API: nvds_measure_buffer_latency()
+ * to calculate the latency of buffers downstream relative to the decoder.
+ *
+ * @param[in] buffer        A pointer to the arriving Gst Buffer.
+ * @param[in] element_name  A pointer to the name of the component for which
+ *                          latency is to be measured.
+ * @param[in] frame_id      The id/number of this frame/buffer produced by
+ *                          the component that produces this buffer.
+ *
+ */
+void nvds_add_reference_timestamp_meta(GstBuffer * buffer,
+    gchar *element_name, guint frame_id);
+
+/**
  * Defines a pseudo-variable whose value is the return value of
  * @ref nvds_get_enable_latency_measurement(). It indicates whether latency
  * measurement is enabled.

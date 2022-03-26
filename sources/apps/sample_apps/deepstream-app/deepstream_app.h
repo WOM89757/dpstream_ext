@@ -98,6 +98,7 @@ typedef struct
 {
   gboolean enable_perf_measurement;
   gint file_loop;
+  gint pipeline_recreate_sec;
   gboolean source_list_enabled;
   guint total_num_sources;
   guint num_source_sub_bins;

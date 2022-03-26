@@ -81,7 +81,12 @@ Extra Pre-requisites for DeepStream Triton test.
 
 --------------------------------------------------------------------------------
 Compile the custom library:
-  $ make -C nvdsinfer_custom_impl_fasterRCNN
+
+  # Export correct CUDA version as per the platform
+  For Jetson:  $ export CUDA_VER=10.2
+  For x86:     $ export CUDA_VER=11.4
+
+  $ sudo -E make -C nvdsinfer_custom_impl_fasterRCNN
 
 NOTE: To compile the sources, run make with "sudo" or root permission.
 

@@ -26,7 +26,8 @@ CFLAGS:= -Wall -std=c++11
 
 CFLAGS+= -shared -fPIC
 
-CFLAGS+= -I../../includes
+CFLAGS+= -I../../includes \
+         -I /usr/local/cuda-$(CUDA_VER)/include
 
 LIBS:= -lnvinfer -lnvparsers
 LFLAGS:= -Wl,--start-group $(LIBS) -Wl,--end-group

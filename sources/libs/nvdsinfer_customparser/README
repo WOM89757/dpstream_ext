@@ -16,8 +16,13 @@ Pre-requisites:
 - TensorRT 7.1+
 
 --------------------------------------------------------------------------------
-Compile the library using:
-  make
+Compile the library :
+
+  # Export correct CUDA version as per the platform
+  For Jetson:  $ export CUDA_VER=10.2
+  For x86:     $ export CUDA_VER=11.4
+
+  $ sudo -E make install
 
 --------------------------------------------------------------------------------
 This source has been written to parse the output layers of the resnet10 detector

@@ -560,6 +560,55 @@ overlay_graphics (AppCtx * appCtx, GstBuffer * buf,
   return TRUE;
 }
 
+static gboolean
+recreate_pipeline_thread_func (gpointer arg)
+{
+  guint i;
+  gboolean ret = TRUE;
+  AppCtx *appCtx = (AppCtx *) arg;
+
+  g_print ("Destroy pipeline\n");
+  destroy_pipeline (appCtx);
+
+  g_print ("Recreate pipeline\n");
+  if (!create_pipeline (appCtx, NULL,
+          all_bbox_generated, perf_cb, overlay_graphics)) {
+    NVGSTDS_ERR_MSG_V ("Failed to create pipeline");
+    return_value = -1;
+    return FALSE;
+  }
+
+  if (gst_element_set_state (appCtx->pipeline.pipeline,
+          GST_STATE_PAUSED) == GST_STATE_CHANGE_FAILURE) {
+    NVGSTDS_ERR_MSG_V ("Failed to set pipeline to PAUSED");
+    return_value = -1;
+    return FALSE;
+  }
+
+  for (i = 0; i < appCtx->config.num_sink_sub_bins; i++) {
+    if (!GST_IS_VIDEO_OVERLAY (appCtx->pipeline.instance_bins[0].sink_bin.
+            sub_bins[i].sink)) {
+      continue;
+    }
+
+    gst_video_overlay_set_window_handle (GST_VIDEO_OVERLAY (appCtx->pipeline.
+            instance_bins[0].sink_bin.sub_bins[i].sink),
+        (gulong) windows[appCtx->index]);
+    gst_video_overlay_expose (GST_VIDEO_OVERLAY (appCtx->pipeline.
+            instance_bins[0].sink_bin.sub_bins[i].sink));
+  }
+
+  if (gst_element_set_state (appCtx->pipeline.pipeline,
+          GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
+
+    g_print ("\ncan't set pipeline to playing state.\n");
+    return_value = -1;
+    return FALSE;
+  }
+
+  return ret;
+}
+
 int
 main (int argc, char *argv[])
 {
@@ -752,6 +801,9 @@ main (int argc, char *argv[])
         return_value = -1;
         goto done;
       }
+      if (appCtx[i]->config.pipeline_recreate_sec)
+        g_timeout_add_seconds (appCtx[i]->config.pipeline_recreate_sec,
+            recreate_pipeline_thread_func, appCtx[i]);
     }
   }
 

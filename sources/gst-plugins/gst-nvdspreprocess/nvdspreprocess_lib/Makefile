@@ -38,7 +38,7 @@ LIB:=libcustom2d_preprocess.so
 
 NVDS_VERSION:=6.0
 
-CFLAGS+= -fPIC -DHAVE_CONFIG_H -std=c++17 -Wall -Werror -DDS_VERSION=\"6.0.0\" \
+CFLAGS+= -fPIC -DHAVE_CONFIG_H -std=c++17 -Wall -Werror -DDS_VERSION=\"6.0.1\" \
 	 -I /usr/local/cuda-$(CUDA_VER)/include \
 	 -I ../include \
 	 -I ../../../includes

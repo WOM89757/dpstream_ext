@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2018-2021, NVIDIA CORPORATION.  All rights reserved.
  *
  * NVIDIA Corporation and its licensors retain all intellectual property
  * and proprietary rights in and to this software, related documentation
@@ -31,7 +31,7 @@
 
 #define NVDS_VERSION_MAJOR 6
 #define NVDS_VERSION_MINOR 0
-#define NVDS_VERSION_MICRO 0
+#define NVDS_VERSION_MICRO 1
 
 #ifdef __cplusplus
 extern "C"

@@ -272,30 +272,6 @@ generate_event_object (void *privData, NvDsEventMsgMeta *meta)
 }
 
 static JsonObject*
-generate_tags_object (void *privData, NvDsEventMsgMeta *meta)
-{
-  JsonObject *tagsObj;
-
-  /*
-   * "tags":{
-   *      "userdefine": ""
-   *  } 
-   * 
-   */
-
-  tagsObj = json_object_new ();
-
-  if(meta->tagsStr) {
-    // cout << "tagsStr define:" << endl;
-    json_object_set_string_member (tagsObj, "userdefine", meta->tagsStr);
-  } else {
-    // cout << "tagsStr undefine" << endl;
-    json_object_set_string_member (tagsObj, "userdefine", "");
-  }
-  return tagsObj;
-}
-
-static JsonObject*
 generate_object_object (void *privData, NvDsEventMsgMeta *meta)
 {
   JsonObject *objectObj;
@@ -563,7 +539,6 @@ gchar* generate_event_message (void *privData, NvDsEventMsgMeta *meta)
   JsonObject *analyticsObj;
   JsonObject *eventObj;
   JsonObject *objectObj;
-  JsonObject *tagsObj;
   gchar *message;
 
   uuid_t msgId;
@@ -586,9 +561,6 @@ gchar* generate_event_message (void *privData, NvDsEventMsgMeta *meta)
 
   // event object
   eventObj = generate_event_object (privData, meta);
-  
-  // tags object
-  tagsObj = generate_tags_object(privData, meta);
 
   // root object
   rootObj = json_object_new ();
@@ -600,7 +572,6 @@ gchar* generate_event_message (void *privData, NvDsEventMsgMeta *meta)
   json_object_set_object_member (rootObj, "analyticsModule", analyticsObj);
   json_object_set_object_member (rootObj, "object", objectObj);
   json_object_set_object_member (rootObj, "event", eventObj);
-  json_object_set_object_member (rootObj, "tags", tagsObj);
 
   if (meta->videoPath)
     json_object_set_string_member (rootObj, "videoPath", meta->videoPath);

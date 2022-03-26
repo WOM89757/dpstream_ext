@@ -1004,7 +1004,7 @@ create_pipeline (AppCtx * appCtx,
   GstElement *tmp_elem1;
   GstElement *tmp_elem2;
   guint i;
-  GstPad *fps_pad;
+  GstPad *fps_pad = NULL;
   gulong latency_probe_id;
 
   _dsmeta_quark = g_quark_from_static_string (NVDS_META_STRING);
@@ -1319,6 +1319,9 @@ create_pipeline (AppCtx * appCtx,
 
   ret = TRUE;
 done:
+  if (fps_pad)
+    gst_object_unref (fps_pad);
+
   if (!ret) {
     NVGSTDS_ERR_MSG_V ("%s failed", __func__);
   }
@@ -1366,6 +1369,7 @@ destroy_pipeline (AppCtx * appCtx)
       else
         gst_message_unref (message);
     }
+    gst_object_unref (bus);
     gst_element_set_state (appCtx->pipeline.pipeline, GST_STATE_NULL);
   }
   g_cond_wait_until (&appCtx->app_cond, &appCtx->app_lock, end_time);
@@ -1401,6 +1405,8 @@ destroy_pipeline (AppCtx * appCtx)
     gst_bus_remove_watch (bus);
     gst_object_unref (bus);
     gst_object_unref (appCtx->pipeline.pipeline);
+    appCtx->pipeline.pipeline = NULL;
+    pause_perf_measurement (&appCtx->perf_struct);
   }
 
   if (config->num_message_consumers) {

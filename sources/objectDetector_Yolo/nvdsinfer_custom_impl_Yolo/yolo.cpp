@@ -44,7 +44,8 @@ Yolo::~Yolo()
     destroyNetworkUtils();
 }
 
-nvinfer1::ICudaEngine *Yolo::createEngine (nvinfer1::IBuilder* builder)
+nvinfer1::ICudaEngine *Yolo::createEngine (
+    nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config)
 {
     assert (builder);
 
@@ -59,7 +60,6 @@ nvinfer1::ICudaEngine *Yolo::createEngine (nvinfer1::IBuilder* builder)
 
     // Build the engine
     std::cout << "Building the TensorRT Engine..." << std::endl;
-    nvinfer1::IBuilderConfig *config = builder->createBuilderConfig();
     nvinfer1::ICudaEngine * engine = builder->buildEngineWithConfig(*network, *config);
     if (engine) {
         std::cout << "Building complete!" << std::endl;
@@ -69,7 +69,6 @@ nvinfer1::ICudaEngine *Yolo::createEngine (nvinfer1::IBuilder* builder)
 
     // destroy
     network->destroy();
-    delete config;
     return engine;
 }
 

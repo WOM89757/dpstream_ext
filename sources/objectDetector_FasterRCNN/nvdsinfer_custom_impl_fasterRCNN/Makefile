@@ -24,6 +24,7 @@ CC:= g++
 
 CFLAGS:= -Wall -std=c++14 -shared -fPIC -Wno-error=deprecated-declarations
 CFLAGS+= -I../../includes \
+         -I /usr/local/cuda-$(CUDA_VER)/include \
          -I../../includes/nvdsinferserver
 
 LIBS:= -lnvinfer -lnvinfer_plugin \

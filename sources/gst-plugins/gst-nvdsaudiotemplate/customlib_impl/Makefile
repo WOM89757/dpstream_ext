@@ -38,7 +38,7 @@ LIB:=libcustom_audioimpl.so
 
 NVDS_VERSION:=6.0
 
-CFLAGS+= -fPIC -DDS_VERSION=\"6.0.0\" \
+CFLAGS+= -fPIC -DDS_VERSION=\"6.0.1\" \
 	 -I /usr/local/cuda-$(CUDA_VER)/include \
 	 -I ../../../includes -I../common
 

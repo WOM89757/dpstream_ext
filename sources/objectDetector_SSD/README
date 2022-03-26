@@ -49,9 +49,12 @@ Pre-requisites:
 
 --------------------------------------------------------------------------------
 Compile the custom library:
-  # Export correct CUDA version (e.g. 10.2, 10.1)
-  $ export CUDA_VER=10.2
-  $ make -C nvdsinfer_custom_impl_ssd
+
+  # Export correct CUDA version as per the platform
+  For Jetson:  $ export CUDA_VER=10.2
+  For x86:     $ export CUDA_VER=11.4
+
+  $ sudo -E make -C nvdsinfer_custom_impl_ssd
 
 NOTE: To compile the sources, run make with "sudo" or root permission.
 

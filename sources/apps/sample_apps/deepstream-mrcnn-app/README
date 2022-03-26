@@ -52,16 +52,14 @@ Azure Iot:
     for detailed documentation on prerequisites and usages of rabbitmq based
     amqp protocol adaptor with the message broker plugin for sending messages to cloud.
 
- Model (MaskRCNN) Requirements:
+ Model (PeopleSegNet) Requirements:
  ------------------------------
-    Download the TLT 2.0.1 model files:
+    Download the TAO 3.0 model files:
     -----------------------------------
-    Please refer https://github.com/NVIDIA-AI-IOT/deepstream_tao_apps/tree/release/tlt2.0.1#2-download-models to get the models.
-    Rename the `models` folder downloaded to `tao_pretrained_models` and copy it to
-    /opt/nvidia/deepstream/deepstream/samples/models/
+    Please refer https://github.com/NVIDIA-AI-IOT/deepstream_reference_apps/tree/master/deepstream_app_tao_configs#1-download-the-config-files to get the models.
     TRT plugin Build from OSS requirement:
     --------------------------------------
-    MaskRCNN depends on GenerateDetection, MultilevelCropAndResize,
+    PeopleSegNet depends on GenerateDetection, MultilevelCropAndResize,
     MultilevelProposeROI TRT plugins which are not supported by TensorRT 7.x native package.
     So user shall build and update TensorRT OSS Plugin - libnvinfer_plugin.so
 
