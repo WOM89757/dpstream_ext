@@ -1,3 +1,7 @@
 /samples/streams/
 .vscode/
 /samples/models/
+*.o
+*.trtmodel
+*.engine
+*.onnx

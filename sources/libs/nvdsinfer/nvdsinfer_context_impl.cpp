@@ -922,6 +922,26 @@ SegmentPostprocessor::initResource(const NvDsInferContextInitParams& initParams)
 
     m_SegmentationThreshold = initParams.segmentationThreshold;
     m_SegmentationOutputOrder = initParams.segmentationOutputOrder;
+
+    /* If custom parse function is specified get the function address from the
+     * custom library. */
+    if (m_CustomLibHandle &&
+        !string_empty(initParams.customClassifierParseFuncName))
+    {
+        printf("heee\n");
+        m_CustomSegmentationParseFunc =
+            m_CustomLibHandle->symbol<NvDsInferSegmentationParseCustomFunc>(
+                initParams.customClassifierParseFuncName);
+        if (!m_CustomSegmentationParseFunc)
+        {
+            printError(
+                "Failed to init segmentation-postprocessor "
+                "because dlsym failed to get func %s pointer",
+                safeStr(initParams.customClassifierParseFuncName));
+            return NVDSINFER_CUSTOM_LIB_FAILED;
+        }
+    }
+
     return NVDSINFER_SUCCESS;
 }
 
@@ -1925,6 +1945,7 @@ NvDsInferContextImpl::buildModel(NvDsInferContextInitParams& initParams)
             initParams.int8CalibrationFilePath);
         builder->setInt8Calibrator(std::move(calibrator));
     }
+    // printInfo("111111111");
 
     std::string enginePath;
     std::shared_ptr<TrtEngine> engine =
@@ -1934,6 +1955,7 @@ NvDsInferContextImpl::buildModel(NvDsInferContextInitParams& initParams)
         printError("build engine file failed");
         return nullptr;
     }
+    printInfo("111111111");
 
     if (builder->serializeEngine(enginePath, engine->engine()) !=
         NVDSINFER_SUCCESS)

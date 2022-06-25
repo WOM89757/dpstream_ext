@@ -32,7 +32,8 @@ CFLAGS+= -I../../includes \
 LIBS:= -lnvinfer -lnvparsers
 LFLAGS:= -Wl,--start-group $(LIBS) -Wl,--end-group
 
-SRCFILES:= nvdsinfer_custombboxparser.cpp nvdsinfer_customclassifierparser.cpp
+# SRCFILES:= nvdsinfer_custombboxparser.cpp nvdsinfer_customclassifierparser.cpp
+SRCFILES:= nvdsinfer_custombboxparser.cpp nvdsinfer_customclassifierparser.cpp nvdsinfer_customsegmentationparser.cpp
 TARGET_LIB:= libnvds_infercustomparser.so
 
 all: $(TARGET_LIB)

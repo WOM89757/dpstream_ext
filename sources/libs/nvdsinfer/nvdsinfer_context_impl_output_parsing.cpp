@@ -834,6 +834,19 @@ SegmentPostprocessor::fillSegmentationOutput(
     const std::vector<NvDsInferLayerInfo>& outputLayers,
     NvDsInferSegmentationOutput& output)
 {
+    /* Call custom parsing function if specified otherwise use the one
+     * written along with this implementation. */
+    if (m_CustomSegmentationParseFunc)
+    {
+        if (!m_CustomSegmentationParseFunc(outputLayers, output))
+        {
+            printError("Failed to parse segmentation using "
+                    "custom parse function");
+            return NVDSINFER_CUSTOM_LIB_FAILED;
+        }
+        return NVDSINFER_SUCCESS;
+    }
+
     std::function<unsigned int(unsigned int, unsigned int, unsigned int)> indAlongChannel = nullptr;
     NvDsInferDimsCHW outputDimsCHW;
 

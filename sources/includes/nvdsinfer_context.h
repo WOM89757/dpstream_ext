@@ -339,6 +339,10 @@ typedef struct _NvDsInferContextInitParams
     /** Name of the custom classifier attribute parsing function in the custom
      *  library. */
     char customClassifierParseFuncName[_MAX_STR_LENGTH];
+    
+    // /** Name of the custom classifier attribute parsing function in the custom
+    // *  library. */
+    // char customSegmentationParseFuncName[_MAX_STR_LENGTH];
 
     /** Holds a Boolean; true if the input layer contents are to be copied to
      host memory for access by the application. */

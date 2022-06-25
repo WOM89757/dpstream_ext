@@ -346,6 +346,7 @@ private:
 private:
     float m_SegmentationThreshold = 0.0f;
     NvDsInferTensorOrder m_SegmentationOutputOrder = NvDsInferTensorOrder_kNCHW;
+    NvDsInferSegmentationParseCustomFunc m_CustomSegmentationParseFunc = nullptr;
 };
 
 class OtherPostprocessor : public InferPostprocessor

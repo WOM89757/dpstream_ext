@@ -355,6 +355,7 @@ attach_metadata_segmentation (GstNvInfer * nvinfer, GstMiniObject * tensor_out_o
   meta->class_map = segmentation_output.class_map;
   meta->class_probabilities_map = segmentation_output.class_probability_map;
   meta->priv_data = gst_mini_object_ref (tensor_out_object);
+  // gst_print("seg result width: %d  height %d classes: %d [1000]: %d\n ", meta->width, meta->height, meta->classes, meta->class_map[1000]);
 
   user_meta->user_meta_data = meta;
   user_meta->base_meta.meta_type = (NvDsMetaType) NVDSINFER_SEGMENTATION_META;

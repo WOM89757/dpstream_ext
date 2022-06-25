@@ -128,6 +128,7 @@
 #pragma GCC diagnostic pop
 
 #include "nvdsinfer.h"
+#include "nvdsinfer_context.h"
 
 /*
  * C++ interfaces
@@ -297,6 +298,30 @@ typedef bool (* NvDsInferClassiferParseCustomFunc) (
            float classifierThreshold, \
            std::vector<NvDsInferAttribute> &attrList, \
            std::string &descString);
+
+/**
+ * Type definition for the custom segmentation output parsing function.
+ *
+ * @param[in]  outputLayersInfo  A vector containing information on the
+ *                               output layers of the model.
+ * @param[out] output        A reference to a NvDsInferSegmentationOutput object 
+ *                           in which information parsed from segmentation network 
+ *                           output for one frame.
+ */
+typedef bool (* NvDsInferSegmentationParseCustomFunc) (
+        std::vector<NvDsInferLayerInfo> const &outputLayersInfo,
+        NvDsInferSegmentationOutput &output);
+
+/**
+ * Validates the segmentation custom parser function definition. Must be called
+ * after defining the function.
+ */
+#define CHECK_CUSTOM_SEGMENTATION_PARSE_FUNC_PROTOTYPE(customParseFunc) \
+    static void checkFunc_ ## customParseFunc (NvDsInferSegmentationParseCustomFunc func = customParseFunc) \
+        { checkFunc_ ## customParseFunc (); }; \
+    extern "C" bool customParseFunc (std::vector<NvDsInferLayerInfo> const &outputLayersInfo, \
+            NvDsInferSegmentationOutput &output);
+
 
 typedef struct _NvDsInferContextInitParams NvDsInferContextInitParams;
 
