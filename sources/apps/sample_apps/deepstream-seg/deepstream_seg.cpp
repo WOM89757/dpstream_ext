@@ -398,6 +398,8 @@ bus_call(GstBus *bus, GstMessage *msg, gpointer data)
       if (gst_nvmessage_parse_stream_eos(msg, &stream_id))
       {
         g_print("Got EOS from stream %d\n", stream_id);
+        // g_main_loop_quit(loop);
+
       }
     }
     break;
@@ -441,7 +443,11 @@ cb_newpad(GstElement *decodebin, GstPad *decoder_src_pad, gpointer data)
     {
       g_printerr("Error: Decodebin did not pick nvidia decoder plugin.\n");
     }
+    g_print("In cb_newpad end\n");
+
   }
+  g_print("In cb_newpad no\n");
+
 }
 
 static void
@@ -454,6 +460,72 @@ decodebin_child_added(GstChildProxy *child_proxy, GObject *object,
     g_signal_connect(G_OBJECT(object), "child-added",
                      G_CALLBACK(decodebin_child_added), user_data);
   }
+}
+static GstElement *
+create_source_bin_image (guint index, gchar * uri)
+{
+  GstElement *bin = NULL;
+  gchar bin_name[16] = { };
+
+  int current_device = -1;
+  cudaGetDevice(&current_device);
+  struct cudaDeviceProp prop;
+  cudaGetDeviceProperties(&prop, current_device);
+
+  g_snprintf (bin_name, 15, "source-bin-%02d", index);
+  /* Create a source GstBin to abstract this bin's content from the rest of the
+   * pipeline */
+  bin = gst_bin_new (bin_name);
+
+  GstElement *source, *jpegparser, *decoder;
+
+  source = gst_element_factory_make ("filesrc", "source");
+
+  jpegparser = gst_element_factory_make ("jpegparse", "jpeg-parser");
+
+  decoder = gst_element_factory_make ("nvv4l2decoder", "nvv4l2-decoder");
+
+  if (!source || !jpegparser || !decoder)
+  {
+    g_printerr ("One element could not be created. Exiting.\n");
+    return NULL;
+  }
+  g_object_set (G_OBJECT (source), "location", uri, NULL);
+  const char *dot = strrchr(uri, '.');
+  if ((!strcmp (dot+1, "mjpeg")) || (!strcmp (dot+1, "mjpg")))
+  {
+    if(prop.integrated) {
+      g_object_set (G_OBJECT (decoder), "mjpeg", 1, NULL);
+    }
+  }
+
+  gst_bin_add_many (GST_BIN (bin), source, jpegparser, decoder, NULL);
+
+  gst_element_link_many (source, jpegparser, decoder, NULL);
+
+  /* We need to create a ghost pad for the source bin which will act as a proxy
+   * for the video decoder src pad. The ghost pad will not have a target right
+   * now. Once the decode bin creates the video decoder and generates the
+   * cb_newpad callback, we will set the ghost pad target to the video decoder
+   * src pad. */
+  if (!gst_element_add_pad (bin, gst_ghost_pad_new_no_target ("src",
+              GST_PAD_SRC))) {
+    g_printerr ("Failed to add ghost pad in source bin\n");
+    return NULL;
+  }
+
+  GstPad *srcpad = gst_element_get_static_pad (decoder, "src");
+  if (!srcpad) {
+    g_printerr ("Failed to get src pad of source bin. Exiting.\n");
+    return NULL;
+  }
+  GstPad *bin_ghost_pad = gst_element_get_static_pad (bin, "src");
+  if (!gst_ghost_pad_set_target (GST_GHOST_PAD (bin_ghost_pad),
+        srcpad)) {
+    g_printerr ("Failed to link decoder src pad to source bin ghost pad\n");
+  }
+
+  return bin;
 }
 
 static GstElement *
@@ -511,6 +583,7 @@ int main(int argc, char *argv[])
   GstElement *pipeline = NULL, *streammux = NULL, *sink = NULL, *pgie = NULL,
              *preprocess = NULL, *queue1, *queue2, *queue3, *queue4, *queue5, *queue6,
              *nvvidconv = NULL, *nvosd = NULL, *nvseg = NULL, *tiler = NULL;
+  GstElement *jpgenc = NULL, *mfsink = NULL, *nvvidconv1 = NULL, *nvvidconv2 = NULL, *imgfreeze = NULL, *auto_videosink = NULL;
   GstElement *transform = NULL;
   GstBus *bus = NULL;
   guint bus_watch_id;
@@ -556,45 +629,53 @@ int main(int argc, char *argv[])
     return -1;
   }
   gst_bin_add(GST_BIN(pipeline), streammux);
-
-  for (i = 0; i < num_sources; i++)
-  {
-    GstPad *sinkpad, *srcpad;
-    gchar pad_name[16] = {};
-    GstElement *source_bin = create_source_bin(i, argv[i + 3]);
-
-    if (!source_bin)
+  gboolean is_video = false;
+  gboolean seg_flag = false;
+  
+    for (i = 0; i < num_sources; i++)
     {
-      g_printerr("Failed to create source bin. Exiting.\n");
-      return -1;
+      GstPad *sinkpad, *srcpad;
+      GstElement *source_bin;
+      gchar pad_name[16] = {};
+      if (is_video) {
+        source_bin = create_source_bin(i, argv[i + 3]);
+
+      }else {
+        source_bin = create_source_bin_image(i, argv[i + 3]);
+      }
+
+      if (!source_bin)
+      {
+        g_printerr("Failed to create source bin. Exiting.\n");
+        return -1;
+      }
+
+      gst_bin_add(GST_BIN(pipeline), source_bin);
+
+      g_snprintf(pad_name, 15, "sink_%u", i);
+      sinkpad = gst_element_get_request_pad(streammux, pad_name);
+      if (!sinkpad)
+      {
+        g_printerr("Streammux request sink pad failed. Exiting.\n");
+        return -1;
+      }
+
+      srcpad = gst_element_get_static_pad(source_bin, "src");
+      if (!srcpad)
+      {
+        g_printerr("Failed to get src pad of source bin. Exiting.\n");
+        return -1;
+      }
+
+      if (gst_pad_link(srcpad, sinkpad) != GST_PAD_LINK_OK)
+      {
+        g_printerr("Failed to link source bin to stream muxer. Exiting.\n");
+        return -1;
+      }
+
+      gst_object_unref(srcpad);
+      gst_object_unref(sinkpad);
     }
-
-    gst_bin_add(GST_BIN(pipeline), source_bin);
-
-    g_snprintf(pad_name, 15, "sink_%u", i);
-    sinkpad = gst_element_get_request_pad(streammux, pad_name);
-    if (!sinkpad)
-    {
-      g_printerr("Streammux request sink pad failed. Exiting.\n");
-      return -1;
-    }
-
-    srcpad = gst_element_get_static_pad(source_bin, "src");
-    if (!srcpad)
-    {
-      g_printerr("Failed to get src pad of source bin. Exiting.\n");
-      return -1;
-    }
-
-    if (gst_pad_link(srcpad, sinkpad) != GST_PAD_LINK_OK)
-    {
-      g_printerr("Failed to link source bin to stream muxer. Exiting.\n");
-      return -1;
-    }
-
-    gst_object_unref(srcpad);
-    gst_object_unref(sinkpad);
-  }
 
   /* to preprocess the rois and form a raw tensor for inferencing */
   preprocess = gst_element_factory_make("nvdspreprocess", "preprocess-plugin");
@@ -616,6 +697,8 @@ int main(int argc, char *argv[])
 
   /* Use convertor to convert from NV12 to RGBA as required by nvosd */
   nvvidconv = gst_element_factory_make("nvvideoconvert", "nvvideo-converter");
+  nvvidconv1 = gst_element_factory_make("nvvideoconvert", "nvvideo-converter1");
+  nvvidconv2 = gst_element_factory_make("autoconvert", "nvvideo-converter2");
 
   /* Create OSD to draw on the converted RGBA buffer */
   nvosd = gst_element_factory_make("nvdsosd", "nv-onscreendisplay");
@@ -630,7 +713,7 @@ int main(int argc, char *argv[])
   }
   sink = gst_element_factory_make("nveglglessink", "nvvideo-renderer");
 
-  if (!preprocess || !pgie || !tiler || !nvvidconv || !nvosd || !nvseg || !sink)
+  if (!preprocess || !pgie || !tiler || !nvvidconv || !nvvidconv1 || !nvvidconv2 || !nvosd || !nvseg || !sink)
   {
     g_printerr("One element could not be created. Exiting.\n");
     return -1;
@@ -653,8 +736,8 @@ int main(int argc, char *argv[])
   /* Configure the nvinfer element using the nvinfer config file. */
   g_object_set(G_OBJECT(pgie), "input-tensor-meta", FALSE,
                "config-file-path", nvinfer_config_file, NULL);
-  // g_object_set(G_OBJECT(nvseg), "width", MUXER_OUTPUT_WIDTH, "height",
-  //             MUXER_OUTPUT_HEIGHT, NULL);
+  g_object_set(G_OBJECT(nvseg), "width", 512, "height",
+              512, NULL);
 
   g_print("num-sources = %d\n", num_sources);
 
@@ -674,46 +757,128 @@ int main(int argc, char *argv[])
   bus_watch_id = gst_bus_add_watch(bus, bus_call, loop);
   gst_object_unref(bus);
 
+  jpgenc = gst_element_factory_make("jpegenc", "seg-jpegenc");
+  mfsink = gst_element_factory_make("multifilesink", "seg-multifilesink");
+    if (!jpgenc || !mfsink )
+  {
+    g_printerr("One seg element could not be created. Exiting.\n");
+    return -1;
+  }
+  g_object_set(G_OBJECT(mfsink), "location", "/opt/nvidia/deepstream/deepstream-6.0/project/seg/result-1.jpg", NULL);
+  
+  // if (seg_flag) {
+  //   jpgenc = gst_element_factory_make("jpegenc", "seg-jpegenc");
+  //   mfsink = gst_element_factory_make("multifilesink", "seg-multifilesink");
+  //   imgfreeze = gst_element_factory_make("imagefreeze", "seg-imagefreeze");
+  //   auto_videosink = gst_element_factory_make("autovideosink", "seg-autovideosink");
+
+  //   if (!jpgenc || !mfsink || !imgfreeze || !auto_videosink)
+  //   {
+  //     g_printerr("One seg element could not be created. Exiting.\n");
+  //     return -1;
+  //   }
+  //   g_object_set(G_OBJECT(mfsink), "location", "/opt/nvidia/deepstream/deepstream-6.0/project/seg/result-1.jpg", NULL);
+  // }
+
   /* Set up the pipeline */
   /* we add all elements into the pipeline */
   if (prop.integrated)
   {
-    gst_bin_add_many(GST_BIN(pipeline), queue1, preprocess, queue2, pgie, queue3, tiler, queue4,
-                     nvvidconv, queue5, nvosd, queue6, transform, sink, NULL);
-    /* we link the elements together
-    * nvstreammux -> nvinfer -> nvtiler -> nvvidconv -> nvosd -> video-renderer */
-    if (!gst_element_link_many(streammux, queue1, preprocess, queue2, pgie, queue3, tiler, queue4,
-                               nvvidconv, queue5, nvosd, queue6, transform, sink, NULL))
-    {
-      g_printerr("Elements could not be linked. Exiting.\n");
-      return -1;
-    }
-  }
-  else
-  {
-
-    if (1) {
-      gst_bin_add_many(GST_BIN(pipeline), queue1, preprocess, queue2, pgie, queue3, tiler,
-                      queue4, nvvidconv, queue5, nvosd, queue6, sink, NULL);
+    if (seg_flag) {
+      gst_bin_add_many(GST_BIN(pipeline), queue1, preprocess, queue2, pgie, queue3, tiler, queue4,
+                      nvvidconv, queue5, nvosd, queue6, transform, sink, NULL);
+      if (is_video){
+        /* we link the elements together
+        * nvstreammux -> nvinfer -> nvtiler -> nvvidconv -> nvosd -> video-renderer */
+        if (!gst_element_link_many(streammux, queue1, preprocess, queue2, pgie, queue3, tiler,
+                                  queue4, nvvidconv, queue5, nvosd, nvseg, queue6, sink, NULL))
+        {
+          g_printerr("Elements could not be linked. Exiting.\n");
+          return -1;
+        }
+      } else {
+        /* we link the elements together
+        * nvstreammux -> nvinfer -> nvtiler -> nvvidconv -> nvosd -> video-renderer */
+        if (!gst_element_link_many(streammux, queue1, preprocess, queue2, pgie, queue3, tiler,
+                                  queue4, nvvidconv, queue5, nvosd, nvseg, nvvidconv1, jpgenc, queue6, mfsink, NULL))
+        {
+          g_printerr("Elements could not be linked. Exiting.\n");
+          return -1;
+        }
+      }
+    } else {
+      gst_bin_add_many(GST_BIN(pipeline), queue1, preprocess, queue2, pgie, queue3, tiler, queue4,
+                      nvvidconv, queue5, nvosd, queue6, transform, sink, NULL);
       /* we link the elements together
       * nvstreammux -> nvinfer -> nvtiler -> nvvidconv -> nvosd -> video-renderer */
-      if (!gst_element_link_many(streammux, queue1, preprocess, queue2, pgie, queue3, tiler,
-                                queue4, nvvidconv, queue5, nvosd, queue6, sink, NULL))
+      if (!gst_element_link_many(streammux, queue1, preprocess, queue2, pgie, queue3, tiler, queue4,
+                                nvvidconv, queue5, nvosd, queue6, transform, sink, NULL))
       {
         g_printerr("Elements could not be linked. Exiting.\n");
         return -1;
       }
     }
-    else {
-      gst_bin_add_many(GST_BIN(pipeline), queue1, preprocess, queue2, pgie, queue3, tiler,
+
+  }
+  else
+  {
+    if (seg_flag) {
+      // gst_bin_add_many(GST_BIN(pipeline), queue1, preprocess, queue2, pgie, queue3, tiler,
+      //                 queue4, nvvidconv, queue5, nvosd, nvseg, queue6, sink, nvvidconv1, nvvidconv2, jpgenc, mfsink, imgfreeze, auto_videosink, NULL);
+      if (is_video){
+        gst_bin_add_many(GST_BIN(pipeline), queue1, preprocess, queue2, pgie, queue3, tiler,
                       queue4, nvvidconv, queue5, nvosd, nvseg, queue6, sink, NULL);
-      /* we link the elements together
-      * nvstreammux -> nvinfer -> nvtiler -> nvvidconv -> nvosd -> video-renderer */
-      if (!gst_element_link_many(streammux, queue1, preprocess, queue2, pgie, queue3, tiler,
-                                queue4, nvvidconv, queue5, nvosd, nvseg, queue6, sink, NULL))
-      {
-        g_printerr("Elements could not be linked. Exiting.\n");
-        return -1;
+        /* we link the elements together
+        * nvstreammux -> nvinfer -> nvtiler -> nvvidconv -> nvosd -> video-renderer */
+        if (!gst_element_link_many(streammux, queue1, preprocess, queue2, pgie, queue3, tiler,
+                                  queue4, nvvidconv, queue5, nvosd, nvseg, queue6, sink, NULL))
+        {
+          g_printerr("Elements could not be linked. Exiting.\n");
+          return -1;
+        }
+      } else {
+        gst_bin_add_many(GST_BIN(pipeline), queue1, preprocess, queue2, pgie, queue3, tiler,
+                      queue4, nvvidconv, queue5, nvosd, nvseg, queue6, nvvidconv1, jpgenc, mfsink, NULL);
+                      // queue4, nvvidconv, queue5, nvosd, nvseg, queue6, sink, nvvidconv1, nvvidconv2, jpgenc, mfsink, imgfreeze, auto_videosink, NULL);
+        /* we link the elements together
+        * nvstreammux -> nvinfer -> nvtiler -> nvvidconv -> nvosd -> video-renderer */
+        if (!gst_element_link_many(streammux, queue1, preprocess, queue2, pgie, queue3, tiler,
+                                  queue4, nvvidconv, queue5, nvosd, nvseg, queue6, nvvidconv1, jpgenc, mfsink, NULL))
+                                  // queue4, nvvidconv, queue5, nvosd, nvseg, nvvidconv1, queue6, imgfreeze, auto_videosink,  NULL))
+        {
+          g_printerr(" 11Elements could not be linked. Exiting.\n");
+          return -1;
+        }
+        gst_print("link finished!\n");
+      }
+      
+    }
+    else {
+      if (is_video){
+        gst_bin_add_many(GST_BIN(pipeline), queue1, preprocess, queue2, pgie, queue3, tiler,
+                      queue4, nvvidconv, queue5, nvosd, queue6, sink, NULL);
+        /* we link the elements together
+        * nvstreammux -> nvinfer -> nvtiler -> nvvidconv -> nvosd -> video-renderer */
+        if (!gst_element_link_many(streammux, queue1, preprocess, queue2, pgie, queue3, tiler,
+                                  queue4, nvvidconv, queue5, nvosd, queue6, sink, NULL))
+        {
+          g_printerr("Elements could not be linked. Exiting.\n");
+          return -1;
+        }
+      } else {
+        gst_bin_add_many(GST_BIN(pipeline), queue1, preprocess, queue2, pgie, queue3, tiler,
+                      queue4, nvvidconv, queue5, nvosd, queue6, nvvidconv1, jpgenc, mfsink, NULL);
+                      // queue4, nvvidconv, queue5, nvosd, nvseg, queue6, sink, nvvidconv1, nvvidconv2, jpgenc, mfsink, imgfreeze, auto_videosink, NULL);
+        /* we link the elements together
+        * nvstreammux -> nvinfer -> nvtiler -> nvvidconv -> nvosd -> video-renderer */
+        if (!gst_element_link_many(streammux, queue1, preprocess, queue2, pgie, queue3, tiler,
+                                  queue4, nvvidconv, queue5, nvosd, queue6, nvvidconv1, jpgenc, mfsink, NULL))
+                                  // queue4, nvvidconv, queue5, nvosd, nvseg, nvvidconv1, queue6, imgfreeze, auto_videosink,  NULL))
+        {
+          g_printerr(" 11Elements could not be linked. Exiting.\n");
+          return -1;
+        }
+        gst_print("link finished!\n");
       }
     }
 
@@ -760,3 +925,95 @@ int main(int argc, char *argv[])
   g_main_loop_unref(loop);
   return 0;
 }
+
+
+  // if (is_video) {
+  //   for (i = 0; i < num_sources; i++)
+  //   {
+  //     GstPad *sinkpad, *srcpad;
+  //     gchar pad_name[16] = {};
+  //     GstElement *source_bin = create_source_bin(i, argv[i + 3]);
+
+  //     if (!source_bin)
+  //     {
+  //       g_printerr("Failed to create source bin. Exiting.\n");
+  //       return -1;
+  //     }
+
+  //     gst_bin_add(GST_BIN(pipeline), source_bin);
+
+  //     g_snprintf(pad_name, 15, "sink_%u", i);
+  //     sinkpad = gst_element_get_request_pad(streammux, pad_name);
+  //     if (!sinkpad)
+  //     {
+  //       g_printerr("Streammux request sink pad failed. Exiting.\n");
+  //       return -1;
+  //     }
+
+  //     srcpad = gst_element_get_static_pad(source_bin, "src");
+  //     if (!srcpad)
+  //     {
+  //       g_printerr("Failed to get src pad of source bin. Exiting.\n");
+  //       return -1;
+  //     }
+
+  //     if (gst_pad_link(srcpad, sinkpad) != GST_PAD_LINK_OK)
+  //     {
+  //       g_printerr("Failed to link source bin to stream muxer. Exiting.\n");
+  //       return -1;
+  //     }
+
+  //     gst_object_unref(srcpad);
+  //     gst_object_unref(sinkpad);
+  //   }
+  // } else {
+  //     GstElement *file_src = NULL, *jpg_parse = NULL, *nvv4l2_decoder = NULL;
+  //     gchar pad_name[16] = {};
+  //     GstPad *sinkpad, *srcpad;
+
+  //     file_src = gst_element_factory_make("filesrc", "file-src");
+  //     jpg_parse = gst_element_factory_make("jpegparse", "jpg-parse");
+  //     nvv4l2_decoder = gst_element_factory_make("nvv4l2decoder", "nvv4l2-decoder");
+  //     if (!file_src || !jpg_parse || !nvv4l2_decoder)
+  //     {
+  //       g_printerr("One element in source bin could not be created.\n");
+  //       return -1;
+  //     }
+  //     gchar* uri = argv[3];
+  //     g_object_set(G_OBJECT(file_src), "location", argv[3], NULL);
+
+  //     gst_bin_add_many(GST_BIN(pipeline), file_src, jpg_parse, nvv4l2_decoder, NULL);
+  //     /* we link the elements together
+  //     * file_src -> jpg_parse -> nvv4l2_decoder */
+
+  //     if (!gst_element_link_many(file_src, jpg_parse, nvv4l2_decoder, NULL))
+  //     {
+  //       g_printerr("Elements could not be linked. Exiting.\n");
+  //       return -1;
+  //     }
+
+  //     g_snprintf(pad_name, 15, "sink_%u", 0);
+  //     sinkpad = gst_element_get_request_pad(streammux, pad_name);
+  //     if (!sinkpad)
+  //     {
+  //       g_printerr("Streammux request sink pad failed. Exiting.\n");
+  //       return -1;
+  //     }
+
+  //     srcpad = gst_element_get_static_pad(nvv4l2_decoder, "src");
+  //     if (!srcpad)
+  //     {
+  //       g_printerr("Failed to get src pad of nvv4l2_decoder. Exiting.\n");
+  //       return -1;
+  //     }
+
+  //     if (gst_pad_link(srcpad, sinkpad) != GST_PAD_LINK_OK)
+  //     {
+  //       g_printerr("Failed to link nvv4l2_decoder to stream muxer. Exiting.\n");
+  //       return -1;
+  //     }
+
+  //     gst_object_unref(srcpad);
+  //     gst_object_unref(sinkpad);
+
+  // }
