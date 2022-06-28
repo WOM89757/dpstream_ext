@@ -838,7 +838,7 @@ SegmentPostprocessor::fillSegmentationOutput(
      * written along with this implementation. */
     if (m_CustomSegmentationParseFunc)
     {
-        if (!m_CustomSegmentationParseFunc(outputLayers, output))
+        if (!m_CustomSegmentationParseFunc(outputLayers, m_SegmentationOutputOrder, output))
         {
             printError("Failed to parse segmentation using "
                     "custom parse function");

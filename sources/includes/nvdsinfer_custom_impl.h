@@ -310,6 +310,7 @@ typedef bool (* NvDsInferClassiferParseCustomFunc) (
  */
 typedef bool (* NvDsInferSegmentationParseCustomFunc) (
         std::vector<NvDsInferLayerInfo> const &outputLayersInfo,
+        NvDsInferTensorOrder &m_SegmentationOutputOrder,
         NvDsInferSegmentationOutput &output);
 
 /**
@@ -320,6 +321,7 @@ typedef bool (* NvDsInferSegmentationParseCustomFunc) (
     static void checkFunc_ ## customParseFunc (NvDsInferSegmentationParseCustomFunc func = customParseFunc) \
         { checkFunc_ ## customParseFunc (); }; \
     extern "C" bool customParseFunc (std::vector<NvDsInferLayerInfo> const &outputLayersInfo, \
+            NvDsInferTensorOrder &m_SegmentationOutputOrder, \
             NvDsInferSegmentationOutput &output);
 
 
