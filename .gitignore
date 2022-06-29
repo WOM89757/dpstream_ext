@@ -5,3 +5,6 @@
 *.trtmodel
 *.engine
 *.onnx
+deepstream-hd-app
+deepstream-mrcnn-app
+deepstream-seg

@@ -29,6 +29,8 @@
 #include <cuda_runtime_api.h>
 #include <fstream>
 #include <string>
+#include <map>
+#include <sstream>
 
 #include "gstnvdsmeta.h"
 #include "nvdspreprocess_meta.h"
@@ -149,6 +151,73 @@ pgie_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
     return GST_PAD_PROBE_OK;
 }
 #endif
+
+static GstPadProbeReturn
+osd_sink_pad_buffer_probe(GstPad * pad, GstPadProbeInfo * info,
+    gpointer u_data)
+{
+  GstBuffer *buf = (GstBuffer *) info->data;
+  NvDsMetaList * l_frame_meta = NULL;
+  NvDsMetaList * l_user_meta = NULL;
+  NvDsUserMeta *user_meta = NULL;
+
+  NvDsBatchMeta *batch_meta = gst_buffer_get_nvds_batch_meta (buf);
+  // printf("osd pad---\n");
+
+  for (l_frame_meta = batch_meta->frame_meta_list; l_frame_meta != NULL;
+      l_frame_meta = l_frame_meta->next) 
+  {
+    NvDsFrameMeta *frame_meta = (NvDsFrameMeta *)(l_frame_meta->data);
+    for (l_user_meta = frame_meta->frame_user_meta_list; l_user_meta != NULL;
+        l_user_meta = l_user_meta->next) 
+    {
+      user_meta = (NvDsUserMeta *)(l_user_meta->data);
+      // user_meta->user_meta_data
+      if (user_meta->base_meta.meta_type == NVDSINFER_SEGMENTATION_META) {
+        printf("start deal deeplabv3plus ---\n");
+
+        NvDsInferSegmentationMeta *segmeta = (NvDsInferSegmentationMeta *)(user_meta->user_meta_data);
+        std::vector<float> temp(segmeta->width * segmeta->height);
+        for (size_t i = 0; i < temp.size(); i++)
+        {
+          temp[i] = segmeta->class_map[i];
+        }
+
+        int sky_count = 0, tree_count = 0, road_count = 0;
+        std::map<int, int> result_map;
+
+        for (unsigned int y = 0; y < segmeta->height; y++) {
+              for (unsigned int x = 0; x < segmeta->width; x++) {
+                  int cls = segmeta->class_map[y * segmeta->width + x];
+                  if (result_map.count(cls)) {
+                      result_map[cls]++;
+                  } else {
+                      result_map[cls] = 1;
+                  }
+                  if (cls == 2) sky_count++;
+                  if (cls == 4) tree_count++;
+                  if (cls == 6) road_count++;
+
+              }
+          }
+
+        std::stringstream map_stream;
+        for (auto iter = result_map.begin(); iter != result_map.end(); iter++) {
+            map_stream << iter->first << ":" << iter->second << "  ";
+        }
+        printf("seg result map is :\t %s\n", map_stream.str().c_str());
+        printf("sky rate is %d/%d=%f\n", sky_count, segmeta->width * segmeta->height, sky_count * 1.0/(segmeta->width * segmeta->height));
+        printf("tree rate is %d/%d=%f\n", tree_count, segmeta->width * segmeta->height, tree_count * 1.0/(segmeta->width * segmeta->height));
+        printf("road rate is %d/%d=%f\n", road_count, segmeta->width * segmeta->height, road_count * 1.0/(segmeta->width * segmeta->height));
+      }
+      
+    }
+  
+  }
+  return GST_PAD_PROBE_OK;
+}
+
+
 /* tiler_sink_pad_buffer_probe  will extract metadata received on OSD sink pad
  * and update params for drawing rectangle, object information etc. */
 
@@ -156,6 +225,8 @@ static GstPadProbeReturn
 pgie_src_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
                           gpointer u_data)
 {
+  return GST_PAD_PROBE_OK;
+
   GstBuffer *buf = (GstBuffer *)info->data;
   guint num_rects = 0;
   NvDsObjectMeta *obj_meta = NULL;
@@ -256,8 +327,11 @@ pgie_src_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
        l_user_meta = l_user_meta->next)
   {
     user_meta = (NvDsUserMeta *)(l_user_meta->data);
+
     if (user_meta->base_meta.meta_type == NVDS_PREPROCESS_BATCH_META)
     {
+    printf("NVDS_PREPROCESS_BATCH_META\n");
+
       GstNvDsPreProcessBatchMeta *preprocess_batchmeta =
           (GstNvDsPreProcessBatchMeta *)(user_meta->user_meta_data);
       guint roi_cnt = 0;
@@ -276,14 +350,42 @@ pgie_src_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
             {
               temp[i] = segmeta->class_map[i];
             }
-            std::ofstream outfile("segout_frame_" +
-                                  std::to_string(roi_meta.frame_meta->frame_num) + "_src_" +
-                                  std::to_string(roi_meta.frame_meta->source_id) + "_roi_" +
-                                  std::to_string(roi_cnt) + "_" +
-                                  std::to_string(segmeta->width) + "x" +
-                                  std::to_string(segmeta->height) + ".bin");
-            outfile.write((char *)temp.data(), sizeof(float) * temp.size());
-            outfile.close();
+
+            // int sky_count = 0, tree_count = 0, road_count = 0;
+            // std::map<int, int> result_map;
+
+            // for (unsigned int y = 0; y < segmeta->height; y++)
+            // {
+            //     for (unsigned int x = 0; x < segmeta->width; x++)
+            //     {
+            //         int cls = segmeta->class_map[y * segmeta->width + x];
+            //         if (result_map.count(cls)) {
+            //             result_map[cls]++;
+            //         } else {
+            //             result_map[cls] = 1;
+            //         }
+            //         if (cls == 2) sky_count++;
+            //         if (cls == 4) tree_count++;
+            //         if (cls == 6) road_count++;
+
+            //     }
+            // }
+
+            // std::stringstream map_stream;
+            // for (auto iter = result_map.begin(); iter != result_map.end(); iter++) {
+            //     map_stream << iter->first << ":" << iter->second << "  ";
+            // }
+            // printf("seg result map is :\t %s\n", map_stream.str().c_str());
+
+
+            // std::ofstream outfile("segout_frame_" +
+            //                       std::to_string(roi_meta.frame_meta->frame_num) + "_src_" +
+            //                       std::to_string(roi_meta.frame_meta->source_id) + "_roi_" +
+            //                       std::to_string(roi_cnt) + "_" +
+            //                       std::to_string(segmeta->width) + "x" +
+            //                       std::to_string(segmeta->height) + ".bin");
+            // outfile.write((char *)temp.data(), sizeof(float) * temp.size());
+            // outfile.close();
           }
           if (user_meta->base_meta.meta_type == NVDSINFER_TENSOR_OUTPUT_META)
           {
@@ -629,8 +731,8 @@ int main(int argc, char *argv[])
     return -1;
   }
   gst_bin_add(GST_BIN(pipeline), streammux);
-  gboolean is_video = false;
-  gboolean seg_flag = false;
+  gboolean is_video = true;
+  gboolean seg_flag = true;
   
     for (i = 0; i < num_sources; i++)
     {
@@ -902,6 +1004,15 @@ int main(int argc, char *argv[])
     gst_pad_add_probe(pgie_src_pad, GST_PAD_PROBE_TYPE_BUFFER,
                       pgie_src_pad_buffer_probe, NULL, NULL);
   gst_object_unref(pgie_src_pad);
+
+  pgie_src_pad = gst_element_get_static_pad(nvosd, "src");
+  if (!pgie_src_pad)
+    g_print("Unable to get nvosd src pad\n");
+  else
+    gst_pad_add_probe(pgie_src_pad, GST_PAD_PROBE_TYPE_BUFFER,
+                      osd_sink_pad_buffer_probe, NULL, NULL);
+  gst_object_unref(pgie_src_pad);
+
 
   /* Set the pipeline to "playing" state */
   g_print("Now playing:");

@@ -219,7 +219,7 @@ generate_event_msg_meta (gpointer data, gint class_id, NvDsObjectMeta * obj_para
 
   // if(srcMeta->objectId) {
   if(0) {
-    meta->tagsStr = g_strdup ("{\"streamid\": \"12a\"}");
+    // meta->tagsStr = g_strdup ("{\"streamid\": \"12a\"}");
     // meta->tagsStr = (gchar *) g_malloc0 (MAX_LABEL_SIZE);
 
     // strncpy(meta->tagsStr, "{\"streamid\": \"12a\"}", MAX_LABEL_SIZE);
@@ -604,7 +604,7 @@ main (int argc, char *argv[])
 
   g_object_set (G_OBJECT (msgbroker),
       "proto-lib", "/opt/nvidia/deepstream/deepstream/lib/libnvds_amqp_proto.so", 
-      "conn-str", "192.168.56.103;5672;admin;admin",
+      "conn-str", "192.168.3.18;5672;guest;guest",
       "sync", FALSE,
       "topic", "dstest",
       NULL);

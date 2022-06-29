@@ -34,6 +34,7 @@ Compilation Steps:
 To run:
 
   $ ./deepstream-hd-app <h264_elementary_stream>
+  ./deepstream-hd-app /opt/nvidia/deepstream/deepstream/samples/streams/sample_720p.h264
 
 NOTE: To compile the sources, run make with "sudo" or root permission.
 
