@@ -47,7 +47,7 @@ e.g.
   $ ./deepstream-preprocess-test config_preprocess.txt config_infer.txt file:///video1.mp4 file:///video2.mp4
   $ ./deepstream-preprocess-test config_preprocess.txt config_infer.txt rtsp://127.0.0.1/video1 rtsp://127.0.0.1/video2
   $ ./deepstream-seg ./config_preprocess.txt config_infer.txt  file:///opt/nvidia/deepstream/deepstream-6.0/samples/streams/sample_720p.mp4
-  ./config_preprocess.txt /opt/nvidia/deepstream/deepstream-6.0/project/seg/deeplabv3p_segmentation_config_semantic.txt  file:///opt/nvidia/deepstream/deepstream-6.0/samples/streams/sample_720p.mp4
+  ./deepstream-seg ./config_preprocess.txt /opt/nvidia/deepstream/deepstream-6.0/project/seg/deeplabv3p_segmentation_config_semantic.txt  file:///opt/nvidia/deepstream/deepstream-6.0/samples/streams/sample_720p.mp4
 
 NOTE:
 1. For optimal performance, set nvinfer batch-size in nvinfer config file same as

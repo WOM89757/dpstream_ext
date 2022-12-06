@@ -187,19 +187,19 @@ osd_sink_pad_buffer_probe(GstPad * pad, GstPadProbeInfo * info,
         std::map<int, int> result_map;
 
         for (unsigned int y = 0; y < segmeta->height; y++) {
-              for (unsigned int x = 0; x < segmeta->width; x++) {
-                  int cls = segmeta->class_map[y * segmeta->width + x];
-                  if (result_map.count(cls)) {
-                      result_map[cls]++;
-                  } else {
-                      result_map[cls] = 1;
-                  }
-                  if (cls == 2) sky_count++;
-                  if (cls == 4) tree_count++;
-                  if (cls == 6) road_count++;
+          for (unsigned int x = 0; x < segmeta->width; x++) {
+            int cls = segmeta->class_map[y * segmeta->width + x];
+            if (result_map.count(cls)) {
+                result_map[cls]++;
+            } else {
+                result_map[cls] = 1;
+            }
+            if (cls == 2) sky_count++;
+            if (cls == 4) tree_count++;
+            if (cls == 6) road_count++;
 
-              }
           }
+        }
 
         std::stringstream map_stream;
         for (auto iter = result_map.begin(); iter != result_map.end(); iter++) {
