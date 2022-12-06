@@ -503,6 +503,7 @@ main (int argc, char *argv[])
   guint bus_watch_id;
   GstPad *osd_sink_pad = NULL, *pgie_queue_sink_pad = NULL;
 
+  int rabbitmq_upload = 0;
   int current_device = -1;
   cudaGetDevice(&current_device);
   struct cudaDeviceProp prop;
@@ -595,19 +596,22 @@ main (int argc, char *argv[])
       "infer-on-class-ids", "0",
       "process-mode", 2,
       NULL);
-  g_object_set (G_OBJECT (msgconv),
-      "config", "dshd_msgconv_config.txt", 
-      "payload-type", 0,
-      "msg2p-newapi", 0,
-      "frame-interval", 30,
-      NULL);
+  if (rabbitmq_upload) {
+    g_object_set (G_OBJECT (msgconv),
+        "config", "dshd_msgconv_config.txt", 
+        "payload-type", 0,
+        "msg2p-newapi", 0,
+        "frame-interval", 30,
+        NULL);
 
-  g_object_set (G_OBJECT (msgbroker),
-      "proto-lib", "/opt/nvidia/deepstream/deepstream/lib/libnvds_amqp_proto.so", 
-      "conn-str", "192.168.3.18;5672;guest;guest",
-      "sync", FALSE,
-      "topic", "dstest",
-      NULL);
+    g_object_set (G_OBJECT (msgbroker),
+        "proto-lib", "/opt/nvidia/deepstream/deepstream/lib/libnvds_amqp_proto.so", 
+        "conn-str", "192.168.1.9;5672;guest;guest",
+        "sync", FALSE,
+        "topic", "dstest",
+        NULL);
+  }
+
 
   /* we add a message handler */
   bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline));
@@ -622,9 +626,18 @@ main (int argc, char *argv[])
         nvvidconv, nvosd, transform, sink, NULL);
   }
   else {
-  gst_bin_add_many (GST_BIN (pipeline),
-      source, h264parser, decoder, streammux, pgine_queue, pgie,
-      nvvidconv, tee0, nvosd, msgconv, msgbroker, nvvidconv1, sink, msg_queue, nvosd_queue, NULL);
+    // gst_bin_add_many (GST_BIN (pipeline),
+    //     source, h264parser, decoder, streammux, pgine_queue, pgie,
+    //     nvvidconv, tee0, nvosd, msgconv, msgbroker, nvvidconv1, sink, msg_queue, nvosd_queue, NULL);
+      if (rabbitmq_upload) {
+        gst_bin_add_many (GST_BIN (pipeline),
+          source, h264parser, decoder, streammux, pgine_queue, pgie,
+          nvvidconv, tee0, nvosd, msgconv, msgbroker, nvvidconv1, sink, msg_queue, nvosd_queue, NULL);
+      } else {
+        gst_bin_add_many (GST_BIN (pipeline),
+          source, h264parser, decoder, streammux, pgine_queue, pgie,
+          nvvidconv, tee0, nvosd, nvvidconv1, sink, msg_queue, nvosd_queue, NULL);
+      }
   }
 
   GstPad *sinkpad, *srcpad;
@@ -675,10 +688,13 @@ main (int argc, char *argv[])
       g_printerr ("Elements could not be linked: 2. Exiting.\n");
       return -1;
     }
-    if (!gst_element_link_many (msg_queue, msgconv, msgbroker, NULL)) {
-      g_printerr ("Elements could not be linked: 3. Exiting.\n");
-      return -1;
+    if (rabbitmq_upload) {
+      if (!gst_element_link_many (msg_queue, msgconv, msgbroker, NULL)) {
+        g_printerr ("Elements could not be linked: 3. Exiting.\n");
+        return -1;
+      }
     }
+
     if (!gst_element_link_many (nvosd_queue, nvvidconv1, sink, NULL)) {
       g_printerr ("Elements could not be linked: 4. Exiting.\n");
       return -1;
