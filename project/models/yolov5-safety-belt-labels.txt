@@ -1,0 +1,17 @@
+Hangings
+A
+B
+C
+D
+E
+0
+9
+LSHP
+Check_Phone
+Mobile
+R_Visor
+NO_Safety_Belt
+Safety_Belt
+L_Visor
+Smoking
+Blur

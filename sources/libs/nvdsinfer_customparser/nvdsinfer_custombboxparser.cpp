@@ -81,6 +81,26 @@ bool NvDsInferParseCustomMrcnnTLTV2 (std::vector<NvDsInferLayerInfo> const &outp
                                    NvDsInferParseDetectionParams const &detectionParams,
                                    std::vector<NvDsInferInstanceMaskInfo> &objectList);
 
+extern "C" bool NvDsInferParseCustomYolo_17(
+    std::vector<NvDsInferLayerInfo> const& outputLayersInfo, NvDsInferNetworkInfo const& networkInfo,
+    NvDsInferParseDetectionParams const& detectionParams, std::vector<NvDsInferParseObjectInfo>& objectList);
+
+
+extern "C"
+bool NvDsInferParseCustomYolov5 (
+         std::vector<NvDsInferLayerInfo> const &outputLayersInfo,
+         NvDsInferNetworkInfo  const &networkInfo,
+         NvDsInferParseDetectionParams const &detectionParams,
+         std::vector<NvDsInferObjectDetectionInfo> &objectList);
+
+static bool NvDsInferParseYoloV5(
+    std::vector<NvDsInferLayerInfo> const& outputLayersInfo,
+    NvDsInferNetworkInfo const& networkInfo,
+    NvDsInferParseDetectionParams const& detectionParams,
+    std::vector<NvDsInferParseObjectInfo>& objectList,
+    const std::vector<float> &anchors,
+    const std::vector<std::vector<int>> &masks);
+
 extern "C"
 bool NvDsInferParseCustomResnet (std::vector<NvDsInferLayerInfo> const &outputLayersInfo,
         NvDsInferNetworkInfo  const &networkInfo,
@@ -541,10 +561,225 @@ bool NvDsInferParseCustomMrcnnTLTV2 (std::vector<NvDsInferLayerInfo> const &outp
     return true;
 
 }
+
+double sigmoid(double x) {
+    return (1 / (1 + exp(-x)));
+}
+
+float clamp(const float val, const float minVal, const float maxVal)
+{
+    assert(minVal <= maxVal);
+    return std::min(maxVal, std::max(minVal, val));
+}
+
+static NvDsInferParseObjectInfo convertBBox(const float& bx, const float& by, const float& bw,
+                                     const float& bh, const int& stride, const uint& netW,
+                                     const uint& netH)
+{
+    NvDsInferParseObjectInfo b;
+    // Restore coordinates to network input resolution
+    float xCenter = bx * stride;
+    float yCenter = by * stride;
+    float x0 = xCenter - bw / 2;
+    float y0 = yCenter - bh / 2;
+    float x1 = x0 + bw;
+    float y1 = y0 + bh;
+
+    x0 = clamp(x0, 0, netW);
+    y0 = clamp(y0, 0, netH);
+    x1 = clamp(x1, 0, netW);
+    y1 = clamp(y1, 0, netH);
+
+    b.left = x0;
+    b.width = clamp(x1 - x0, 0, netW);
+    b.top = y0;
+    b.height = clamp(y1 - y0, 0, netH);
+
+    return b;
+}
+
+static void addBBoxProposal(const float bx, const float by, const float bw, const float bh,
+                     const uint stride, const uint& netW, const uint& netH, const int maxIndex,
+                     const float maxProb, std::vector<NvDsInferParseObjectInfo>& binfo)
+{
+    NvDsInferParseObjectInfo bbi = convertBBox(bx, by, bw, bh, stride, netW, netH);
+    if (bbi.width < 1 || bbi.height < 1) return;
+
+    bbi.detectionConfidence = maxProb;
+    bbi.classId = maxIndex;
+    binfo.push_back(bbi);
+}
+
+
+static std::vector<NvDsInferParseObjectInfo>
+decodeYoloV5Tensor(
+    const float* detections, const std::vector<int> &mask, const std::vector<float> &anchors,
+    const uint gridSizeW, const uint gridSizeH, const uint stride, const uint numBBoxes,
+    const uint numOutputClasses, const uint& netW,
+    const uint& netH,
+    NvDsInferParseDetectionParams const& detectionParams
+    );
+
+static std::vector<NvDsInferParseObjectInfo>
+decodeYoloV5Tensor(
+    const float* detections, const std::vector<int> &mask, const std::vector<float> &anchors,
+    const uint gridSizeW, const uint gridSizeH, const uint stride, const uint numBBoxes,
+    const uint numOutputClasses, const uint& netW,
+    const uint& netH,
+    NvDsInferParseDetectionParams const& detectionParams
+    ) {
+    
+    std::vector<NvDsInferParseObjectInfo> binfo;
+    int item_size = numOutputClasses + 5;
+    double cof_threshold = detectionParams.perClassThreshold[0];
+    size_t anchor_n = 3;
+    for(u_int n=0;n<anchor_n;++n)
+        for(u_int i=0;i<gridSizeH;++i)
+            for(u_int j=0;j<gridSizeH;++j)
+            {
+                // const float pw = anchors[mask[b] * 2];
+                // const float ph = anchors[mask[b] * 2 + 1];
+
+                double box_prob = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j *item_size+ 4];
+                box_prob = sigmoid(box_prob);
+                // std::cout << box_prob << " ";
+                if(box_prob < cof_threshold)
+                    continue;
+                
+                double bx = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j*item_size + 0];
+                double by = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j*item_size + 1];
+                double bw = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j*item_size + 2];
+                double bh = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j *item_size+ 3];
+               
+                double maxProb = 0;
+                int maxIndex=0;
+                for(int t=5;t<item_size;++t){
+                    double tp= detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j *item_size+ t];
+                    tp = sigmoid(tp);
+                    if(tp > maxProb){
+                        maxProb  = tp;
+                        maxIndex = t;
+                    }
+                }
+                float cof = box_prob * maxProb;                
+                if(cof < cof_threshold)
+                    continue;
+                // std::cout << cof <<  " ";
+
+                bx = (sigmoid(bx)*2 - 0.5 + j);
+                by = (sigmoid(by)*2 - 0.5 + i);
+                bw = pow(sigmoid(bw)*2,2) * anchors[mask[n]*2];
+                bh = pow(sigmoid(bh)*2,2) * anchors[mask[n]*2 + 1];
+                // bw = pow(sigmoid(bw)*2,2) * anchors[n*2];
+                // bh = pow(sigmoid(bh)*2,2) * anchors[n*2 + 1];
+                addBBoxProposal(bx, by, bw, bh, stride, netW, netH, maxIndex, maxProb, binfo);
+
+                // double r_x = x - w/2;
+                // double r_y = y - h/2;
+                // Rect rect = Rect(round(r_x),round(r_y),round(w),round(h));
+                // o_rect.push_back(rect);
+                // o_rect_cof.push_back(cof);
+            }
+    return binfo;
+
+}
+
+#define DIVUP(n, d) ((n) + (d)-1) / (d)
+
+static bool NvDsInferParseYoloV5(
+    std::vector<NvDsInferLayerInfo> const& outputLayersInfo,
+    NvDsInferNetworkInfo const& networkInfo,
+    NvDsInferParseDetectionParams const& detectionParams,
+    std::vector<NvDsInferParseObjectInfo>& objectList,
+    const std::vector<float> &anchors,
+    const std::vector<std::vector<int>> &masks) {
+
+
+    const uint kNUM_BBOXES = 3;
+
+
+    if (outputLayersInfo.size() != 1) {
+        std::cerr << "ERROR Mismatch in the number of output layer size."
+                  << "Expected 1 output size, detected in the network of yolov5 :"
+                  << outputLayersInfo.size() << std::endl;
+        return false;
+    }
+
+    // static NvDsInferDimsCHW outputLayerDims;
+    // getDimsCHWFromDims(outputLayerDims, outputLayersInfo[0].inferDims);
+    
+    u_int NUM_CLASSES_YOLO  = outputLayersInfo[0].inferDims.d[1] - 5;
+    // u_int num_width = outputLayersInfo[0].inferDims.d[0];
+    // u_int num_height = outputLayersInfo[0].inferDims.d[1];
+    // std::cout <<  "network is : " << num_width << "x" << num_height << ", classes is " << NUM_CLASSES_YOLO << std::endl;
+
+    // const float *data = (float * ) outputLayersInfo[0].buffer;
+    // const float threshold = detectionParams.perClassThreshold[0];
+
+
+    if (NUM_CLASSES_YOLO != detectionParams.numClassesConfigured)
+    {
+        std::cerr << "WARNING: Num classes mismatch. Configured:"
+                  << detectionParams.numClassesConfigured
+                  << ", detected by network: " << NUM_CLASSES_YOLO << std::endl;
+    }
+
+    std::vector<NvDsInferParseObjectInfo> objects;
+    // std::vector<int> grid_array = {52, 26, 13};
+    std::vector<int> grid_array = {13, 26, 52};
+    float* output_yolo = (float*)(outputLayersInfo[0].buffer);
+    for (uint idx = 0; idx < masks.size(); ++idx) {
+
+        const uint gridSizeH = grid_array[idx];
+        const uint gridSizeW = grid_array[idx];
+        const uint stride = DIVUP(networkInfo.width, gridSizeW);
+        assert(stride == DIVUP(networkInfo.height, gridSizeH));
+        if (idx > 0) {
+            output_yolo = output_yolo + (3 * grid_array[idx - 1] * grid_array[idx -1] * (NUM_CLASSES_YOLO + 5) + 1);
+        }
+
+        std::vector<NvDsInferParseObjectInfo> outObjs =
+            decodeYoloV5Tensor((const float*)(output_yolo), masks[idx], anchors, gridSizeW, gridSizeH, stride, kNUM_BBOXES,
+                       NUM_CLASSES_YOLO, networkInfo.width, networkInfo.height, detectionParams);
+        objects.insert(objects.end(), outObjs.begin(), outObjs.end());
+        // std::cout << "objects size " << objects.size() << std::endl;
+    }
+
+
+    objectList = objects;
+
+    return true;
+}
+
+extern "C"
+bool NvDsInferParseCustomYolov5 (
+         std::vector<NvDsInferLayerInfo> const &outputLayersInfo,
+         NvDsInferNetworkInfo  const &networkInfo,
+         NvDsInferParseDetectionParams const &detectionParams,
+         std::vector<NvDsInferObjectDetectionInfo> &objectList) {
+
+
+    static const std::vector<float> kANCHORS = {
+        10.0, 13.0, 16.0,  30.0,  33.0, 23.0,  30.0,  61.0,  62.0,
+        45.0, 59.0, 119.0, 116.0, 90.0, 156.0, 198.0, 373.0, 326.0};
+    static const std::vector<std::vector<int>> kMASKS = {
+        {6, 7, 8},
+        {3, 4, 5},
+        {0, 1, 2}};
+    return NvDsInferParseYoloV5 (
+        outputLayersInfo, networkInfo, detectionParams, objectList,
+        kANCHORS, kMASKS);
+
+    return true;
+}
+
+
+
 /* Check that the custom function has been defined correctly */
 CHECK_CUSTOM_PARSE_FUNC_PROTOTYPE(NvDsInferParseCustomResnet);
 CHECK_CUSTOM_PARSE_FUNC_PROTOTYPE(NvDsInferParseCustomTfSSD);
 CHECK_CUSTOM_PARSE_FUNC_PROTOTYPE(NvDsInferParseCustomNMSTLT);
 CHECK_CUSTOM_PARSE_FUNC_PROTOTYPE(NvDsInferParseCustomBatchedNMSTLT);
+CHECK_CUSTOM_PARSE_FUNC_PROTOTYPE(NvDsInferParseCustomYolov5);
 CHECK_CUSTOM_INSTANCE_MASK_PARSE_FUNC_PROTOTYPE(NvDsInferParseCustomMrcnnTLT);
 CHECK_CUSTOM_INSTANCE_MASK_PARSE_FUNC_PROTOTYPE(NvDsInferParseCustomMrcnnTLTV2);
