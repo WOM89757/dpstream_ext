@@ -33,10 +33,10 @@ model-color-format=0
 batch-size=1
 network-mode=1
 num-detected-classes=17
-interval=0
+interval=1
 gie-unique-id=3
-operate-on-gie-id=2
-operate-on-class-ids=1;2
+operate-on-gie-id=1
+operate-on-class-ids=2
 process-mode=2
 network-type=0
 cluster-mode=2
@@ -44,10 +44,16 @@ maintain-aspect-ratio=1
 parse-bbox-func-name=NvDsInferParseCustomYolov5
 custom-lib-path=/opt/nvidia/deepstream/deepstream-6.0/lib/libnvds_infercustomparser.so
 
+input-object-min-width=50
+input-object-min-height=50
+
 [class-attrs-all]
+is-classifier=0
 nms-iou-threshold=0.45
-pre-cluster-threshold=0.1
+pre-cluster-threshold=0.35
 post-cluster-threshold=0.6
 #threshold=0.1
 topk=300
+border-color=0;1;0;1
+bg-color=0;0;1;0
 

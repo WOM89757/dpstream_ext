@@ -35,8 +35,9 @@ LIB_INSTALL_DIR?=/opt/nvidia/deepstream/deepstream-$(NVDS_VERSION)/lib/
 APP_INSTALL_DIR?=/opt/nvidia/deepstream/deepstream-$(NVDS_VERSION)/bin/
 
 ifeq ($(TARGET_DEVICE),aarch64)
-  CFLAGS:= -DPLATFORM_TEGRA
+  CFLAGS:= -DPLATFORM_TEGRA -fPIC
 endif
+# CFLAGS += -fpermissive
 
 SRCS:= $(wildcard *.cpp)  
 
@@ -56,6 +57,7 @@ LIBS:= $(shell pkg-config --libs $(PKGS))
 LIBS+= -L/usr/local/cuda-$(CUDA_VER)/lib64/ -lcudart \
 	   -lm -lcuda \
        -Wl,-rpath,$(LIB_INSTALL_DIR)
+LIBS+= -L$(LIB_INSTALL_DIR) -lnvdsgst_meta -lnvds_meta
 
 all: $(APP)
 
