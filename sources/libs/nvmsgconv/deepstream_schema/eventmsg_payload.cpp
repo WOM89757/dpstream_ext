@@ -107,6 +107,11 @@ generate_place_object (void *privData, NvDsEventMsgMeta *meta)
         json_object_set_object_member (placeObj, "entrance", jobject);
       }
       break;
+    case NVDS_EVENT_UNSAFETY_BELT:
+        json_object_set_string_member (jobject, "id", dsPlaceObj->subObj.field1.c_str());
+        json_object_set_string_member (jobject, "name", dsPlaceObj->subObj.field2.c_str());
+        json_object_set_string_member (jobject, "level", dsPlaceObj->subObj.field3.c_str());
+        json_object_set_object_member (placeObj, "unsafety-belt", jobject);
     default:
       cout << "Event type not implemented " << endl;
       break;
@@ -263,6 +268,9 @@ generate_event_object (void *privData, NvDsEventMsgMeta *meta)
     case NVDS_EVENT_RESET:
       json_object_set_string_member (eventObj, "type", "reset");
       break;
+    case NVDS_EVENT_UNSAFETY_BELT:
+      json_object_set_string_member (eventObj, "type", "unsafety-belt");
+      break;
     default:
       cout << "Unknown event type " << endl;
       break;
@@ -286,9 +294,9 @@ generate_object_object (void *privData, NvDsEventMsgMeta *meta)
       >= (int) sizeof(tracking_id))
     g_warning("Not enough space to copy trackingId");
   json_object_set_string_member (objectObj, "id", tracking_id);
-  json_object_set_double_member (objectObj, "speed", 0);
-  json_object_set_double_member (objectObj, "direction", 0);
-  json_object_set_double_member (objectObj, "orientation", 0);
+  // json_object_set_double_member (objectObj, "speed", 0);
+  // json_object_set_double_member (objectObj, "direction", 0);
+  // json_object_set_double_member (objectObj, "orientation", 0);
 
   switch (meta->objType) {
     case NVDS_OBJECT_TYPE_VEHICLE:
@@ -463,6 +471,22 @@ generate_object_object (void *privData, NvDsEventMsgMeta *meta)
       }
       json_object_set_object_member (objectObj, "face", jobject);
       break;
+    case NVDS_OBJECT_TYPE_VIOLATION:
+      jobject = json_object_new();
+      if (meta->extMsgSize) {
+        NvDsViolationObject *dsObj = (NvDsViolationObject *) meta->extMsg;
+        if (dsObj) {
+          json_object_set_string_member (jobject, "type", dsObj->type);
+          json_object_set_string_member (jobject, "license", dsObj->license);
+          json_object_set_double_member (jobject, "confidence", meta->confidence);
+        }
+      } else {
+        json_object_set_string_member (jobject, "type", "");
+        json_object_set_string_member (jobject, "license", "");
+        json_object_set_double_member (jobject, "confidence", 0);
+      }
+      json_object_set_object_member (objectObj, "violation", jobject);
+      break;
     case NVDS_OBJECT_TYPE_UNKNOWN:
       if(!meta->objectId) {
         break;
@@ -514,18 +538,18 @@ generate_object_object (void *privData, NvDsEventMsgMeta *meta)
   }
 
   // location sub object
-  jobject = json_object_new ();
-  json_object_set_double_member (jobject, "lat", meta->location.lat);
-  json_object_set_double_member (jobject, "lon", meta->location.lon);
-  json_object_set_double_member (jobject, "alt", meta->location.alt);
-  json_object_set_object_member (objectObj, "location", jobject);
+  // jobject = json_object_new ();
+  // json_object_set_double_member (jobject, "lat", meta->location.lat);
+  // json_object_set_double_member (jobject, "lon", meta->location.lon);
+  // json_object_set_double_member (jobject, "alt", meta->location.alt);
+  // json_object_set_object_member (objectObj, "location", jobject);
 
-  // coordinate sub object
-  jobject = json_object_new ();
-  json_object_set_double_member (jobject, "x", meta->coordinate.x);
-  json_object_set_double_member (jobject, "y", meta->coordinate.y);
-  json_object_set_double_member (jobject, "z", meta->coordinate.z);
-  json_object_set_object_member (objectObj, "coordinate", jobject);
+  // // coordinate sub object
+  // jobject = json_object_new ();
+  // json_object_set_double_member (jobject, "x", meta->coordinate.x);
+  // json_object_set_double_member (jobject, "y", meta->coordinate.y);
+  // json_object_set_double_member (jobject, "z", meta->coordinate.z);
+  // json_object_set_object_member (objectObj, "coordinate", jobject);
 
   return objectObj;
 }
@@ -548,10 +572,10 @@ gchar* generate_event_message (void *privData, NvDsEventMsgMeta *meta)
   uuid_unparse_lower(msgId, msgIdStr);
 
   // place object
-  placeObj = generate_place_object (privData, meta);
+  // placeObj = generate_place_object (privData, meta);
 
   // sensor object
-  sensorObj = generate_sensor_object (privData, meta);
+  // sensorObj = generate_sensor_object (privData, meta);
 
   // analytics object
   analyticsObj = generate_analytics_module_object (privData, meta);
@@ -567,8 +591,8 @@ gchar* generate_event_message (void *privData, NvDsEventMsgMeta *meta)
   json_object_set_string_member (rootObj, "messageid", msgIdStr);
   json_object_set_string_member (rootObj, "mdsversion", "1.0");
   json_object_set_string_member (rootObj, "@timestamp", meta->ts);
-  json_object_set_object_member (rootObj, "place", placeObj);
-  json_object_set_object_member (rootObj, "sensor", sensorObj);
+  // json_object_set_object_member (rootObj, "place", placeObj);
+  // json_object_set_object_member (rootObj, "sensor", sensorObj);
   json_object_set_object_member (rootObj, "analyticsModule", analyticsObj);
   json_object_set_object_member (rootObj, "object", objectObj);
   json_object_set_object_member (rootObj, "event", eventObj);

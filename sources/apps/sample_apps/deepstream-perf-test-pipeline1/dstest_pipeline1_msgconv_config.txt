@@ -48,11 +48,11 @@ location=28.47;47.46;1.53
 coordinate=1.0;2.0;3.0
 place-sub-field1="C-76-2"
 place-sub-field2="LEV/EV/CP/ADA"
-place-sub-field3=P2
+place-sub-field3=P3
 
 [analytics0]
 enable=1
-id=XYZ
-description="Vehicle Detection and License Plate Recognition"
+id=001
+description=Traffic Violation Detection
 source=OpenALR
 version=1.0

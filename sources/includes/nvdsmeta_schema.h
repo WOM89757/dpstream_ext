@@ -48,6 +48,7 @@ typedef enum NvDsEventType {
   NVDS_EVENT_PARKED,
   NVDS_EVENT_RESET,
 
+  NVDS_EVENT_UNSAFETY_BELT,
   /** Reserved for future use. Custom events must be assigned values
    greater than this. */
   NVDS_EVENT_RESERVED = 0x100,
@@ -69,6 +70,7 @@ typedef enum NvDsObjectType {
   NVDS_OBJECT_TYPE_VEHICLE_EXT,
   NVDS_OBJECT_TYPE_PERSON_EXT,
   NVDS_OBJECT_TYPE_FACE_EXT,
+  NVDS_OBJECT_TYPE_VIOLATION,
   /** Reserved for future use. Custom objects must be assigned values
    greater than this. */
   NVDS_OBJECT_TYPE_RESERVED = 0x100,
@@ -219,6 +221,16 @@ typedef struct NvDsFaceObjectWithExt {
 
   GList *mask;      /**< Holds a list of polygons for face mask. */
 } NvDsFaceObjectExt;
+
+
+/**
+ * Holds a vehicle object's parameters.
+ */
+typedef struct NvDsViolationObject {
+  gchar *type;      /**< Holds a pointer to the type of the violation. */
+  gchar *license;   /**< Holds a pointer to the vehicle license number of the violation.*/
+} NvDsViolationObject;
+
 
 /**
  * Holds event message meta data.

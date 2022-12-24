@@ -36,7 +36,7 @@ model-color-format=0
 process-mode=2
 
 network-mode=1
-is-classifier=1
+#is-classifier=1
 gie-unique-id=2
 network-type=1
 output-blob-names=output

@@ -37,11 +37,12 @@
 #include "nvdsmeta_schema.h"
 
 #define PGIE_CONFIG_FILE  "perf_demo_pgie_config.txt"
-// #define SGIE1_CONFIG_FILE "perf_demo_sgie1_config.txt"
-// #define SGIE2_CONFIG_FILE "perf_demo_sgie2_config_yolov5_onnx.txt"
+#define SGIE1_CONFIG_FILE "perf_demo_sgie1_config.txt"
+#define SGIE2_CONFIG_FILE "perf_demo_sgie2_config_yolov5_onnx.txt"
+
 // #define SGIE1_CONFIG_FILE "perf_demo_sgie2_config.txt"
-#define SGIE1_CONFIG_FILE "perf_demo_sgie2_config_yolov5_onnx.txt"
-#define SGIE2_CONFIG_FILE "perf_demo_sgie1_config.txt"
+// #define SGIE1_CONFIG_FILE "perf_demo_sgie2_config_yolov5_onnx.txt"
+// #define SGIE2_CONFIG_FILE "perf_demo_sgie1_config.txt"
 // #define SGIE2_CONFIG_FILE "perf_demo_sgie2_config.txt"
 #define SGIE3_CONFIG_FILE "perf_demo_sgie3_config.txt"
 #define MSCONV_CONFIG_FILE "dstest_pipeline1_msgconv_config.txt"
@@ -52,6 +53,7 @@
 
 #define PGIE_CLASS_ID_VEHICLE 2
 #define PGIE_CLASS_ID_PERSON 0
+#define SGIE1_CLASS_ID_UNSAFETYBELT 12
 #define MAX_DISPLAY_LEN 64
 
 #define PGIE_DETECTOR_UID 1
@@ -365,6 +367,15 @@ static gpointer meta_copy_func (gpointer data, gpointer user_data)
         obj->apparel = g_strdup (srcObj->apparel);
       dstMeta->extMsg = obj;
       dstMeta->extMsgSize = sizeof (NvDsPersonObject);
+    } else if (srcMeta->objType == NVDS_OBJECT_TYPE_VIOLATION) {
+      NvDsViolationObject *srcObj = (NvDsViolationObject *) srcMeta->extMsg;
+      NvDsViolationObject *obj = (NvDsViolationObject *) g_malloc0(sizeof (NvDsViolationObject));
+      if (srcObj->type)
+        obj->type = g_strdup (srcObj->type);
+      if (srcObj->license)
+        obj->license = g_strdup (srcObj->license);
+      dstMeta->extMsg = obj;
+      dstMeta->extMsgSize = sizeof (NvDsViolationObject);
     }
   }
 
@@ -414,6 +425,12 @@ static void meta_free_func (gpointer data, gpointer user_data)
         g_free (obj->hair);
       if (obj->apparel)
         g_free (obj->apparel);
+    } else if (srcMeta->objType == NVDS_OBJECT_TYPE_VIOLATION) {
+      NvDsViolationObject *obj = (NvDsViolationObject *) srcMeta->extMsg;
+      if (obj->type)
+        g_free (obj->type);
+      if (obj->license)
+        g_free (obj->license);
     }
     g_free (srcMeta->extMsg);
     srcMeta->extMsgSize = 0;
@@ -436,6 +453,16 @@ generate_vehicle_meta (gpointer data)
 }
 
 static void
+generate_violation_meta (gpointer data)
+{
+  NvDsViolationObject *obj = (NvDsViolationObject *) data;
+
+  obj->type = g_strdup ("unsaf");
+  obj->license = g_strdup ("XX1234");
+}
+
+
+static void
 generate_person_meta (gpointer data)
 {
   NvDsPersonObject *obj = (NvDsPersonObject *) data;
@@ -451,7 +478,7 @@ generate_event_msg_meta (gpointer data, gint class_id, NvDsObjectMeta * obj_para
 {
   NvDsEventMsgMeta *meta = (NvDsEventMsgMeta *) data;
   meta->sensorId = 0;
-  meta->placeId = 0;
+  meta->placeId = 1;
   meta->moduleId = 0;
   meta->sensorStr = g_strdup ("sensor-0");
 
@@ -468,26 +495,17 @@ generate_event_msg_meta (gpointer data, gint class_id, NvDsObjectMeta * obj_para
    * like NvDsVehicleObject / NvDsPersonObject. Then that object should
    * be handled in payload generator library (nvmsgconv.cpp) accordingly.
    */
-  if (class_id == PGIE_CLASS_ID_VEHICLE) {
-    meta->type = NVDS_EVENT_MOVING;
-    meta->objType = NVDS_OBJECT_TYPE_VEHICLE;
+  if (class_id == SGIE1_CLASS_ID_UNSAFETYBELT) {
+    meta->type = NVDS_EVENT_UNSAFETY_BELT;
+    meta->objType = NVDS_OBJECT_TYPE_VIOLATION;
     meta->objClassId = PGIE_CLASS_ID_VEHICLE;
 
-    NvDsVehicleObject *obj = (NvDsVehicleObject *) g_malloc0 (sizeof (NvDsVehicleObject));
-    generate_vehicle_meta (obj);
+    NvDsViolationObject *obj = (NvDsViolationObject *) g_malloc0 (sizeof (NvDsViolationObject));
+    obj->type = g_strdup ("unsafety-belt");
+    obj->license = g_strdup ("");
 
     meta->extMsg = obj;
-    meta->extMsgSize = sizeof (NvDsVehicleObject);
-  } else if (class_id == PGIE_CLASS_ID_PERSON) {
-    meta->type = NVDS_EVENT_ENTRY;
-    meta->objType = NVDS_OBJECT_TYPE_PERSON;
-    meta->objClassId = PGIE_CLASS_ID_PERSON;
-
-    NvDsPersonObject *obj = (NvDsPersonObject *) g_malloc0 (sizeof (NvDsPersonObject));
-    generate_person_meta (obj);
-
-    meta->extMsg = obj;
-    meta->extMsgSize = sizeof (NvDsPersonObject);
+    meta->extMsgSize = sizeof (NvDsViolationObject);
   }
 }
 
@@ -531,11 +549,11 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
     DsExampleObject example_obj = {5, 10, 800, 1300, 'r'};
     gdouble scale_ratio = 1.0;
 
-    g_print("batch frame meta num is %d\n", batch_meta->num_frames_in_batch);
+    // g_print("batch frame meta num is %d\n", batch_meta->num_frames_in_batch);
     for (l_frame = batch_meta->frame_meta_list; l_frame; l_frame = l_frame->next) {
         frame_meta = (NvDsFrameMeta *) l_frame->data;
 
-        g_print("frame meta num is %d\n", frame_meta->num_obj_meta);
+        // g_print("frame meta num is %d\n", frame_meta->num_obj_meta);
         if (frame_meta == NULL) {
           // Ignore Null frame meta.
           continue;
@@ -580,10 +598,13 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
             }
 
             if (obj_meta->unique_component_id == SGIE2_DETECTOR_UID) {
-              g_print("obj parent %p  current %p left %f \n", obj_meta->parent, obj_meta, obj_meta->detector_bbox_info.org_bbox_coords.left);
+              // g_print("obj parent %p  current %p left %f \n", obj_meta->parent, obj_meta, obj_meta->detector_bbox_info.org_bbox_coords.left);
               // g_print("");
-              if (obj_meta->class_id == 14 || 1) {
+              // g_print("safety detect result is %s(%d)\n", obj_meta->obj_label, obj_meta->class_id);
+              if (obj_meta->class_id == 12) {
                     safety_count++;
+                    // g_print("safety detect result is %s(%d) conf %f\n", obj_meta->obj_label, obj_meta->class_id, obj_meta->confidence);
+                    // g_print(" is %d\n ", NVDS_EVENT_CUSTOM);
                     // g_print("safety parent %p  current %p \n", obj_meta->parent, obj_meta);
                     if (obj_meta->parent) {
                         g_print ("Safety found for parent object %p (type=%s)\n",
@@ -597,12 +618,12 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
                 class_meta = (NvDsClassifierMeta *)(l_class->data);
                 if (!class_meta) continue;
                 if (class_meta->unique_component_id == SGIE1_CLASSIFIER_UID) {
-                    g_print("class meta uid: %d  num labels is %d\n", class_meta->unique_component_id, class_meta->num_labels);
+                    // g_print("class meta uid: %d  num labels is %d\n", class_meta->unique_component_id, class_meta->num_labels);
                     for (lable_i = 0, l_label = class_meta->label_info_list; lable_i < class_meta->num_labels && l_label; lable_i++, l_label = l_label->next) {
                         label_info = (NvDsLabelInfo *) (l_label->data);
                         if (label_info) {
-                                g_print("label id: %d , result class id:%d, result label: %s \n ", label_info->label_id, label_info->result_class_id, label_info->result_label);
                             if (label_info->label_id == 0 && label_info->result_class_id == 0) {
+                                g_print("label id: %d , result class id:%d, result label: %s \n ", label_info->label_id, label_info->result_class_id, label_info->result_label);
                                 // g_print("label id: %d , result class id:%d, result label: %s \n ", label_info->label_id, label_info->result_class_id, label_info->result_label);
                             }
                         }
@@ -634,7 +655,7 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
             * component implementing detection / recognition logic.
             * Here it demonstrates how to use / attach that meta data.
             */
-            if (is_first_object && !(frame_number % frame_interval)) {
+            if (is_first_object && !(frame_number % frame_interval) && safety_count) {
               /* Frequency of messages to be send will be based on use case.
               * Here message is being sent for first object every frame_interval(default=30).
               */
@@ -717,12 +738,87 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
         frame_number++;
         // g_print("frame num is %d\n", frame_number);
     }
-    g_print ("Frame Number = %d "
-        "Vehicle Count = %d Person Count = %d Safety Count = %d \n",
-        frame_number, vehicle_count, person_count, safety_count);
+    // g_print ("Frame Number = %d "
+    //     "Vehicle Count = %d Person Count = %d Safety Count = %d \n",
+    //     frame_number, vehicle_count, person_count, safety_count);
 
     return GST_PAD_PROBE_OK;
 }
+
+static GstPadProbeReturn
+sgie2_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
+    gpointer u_data)
+{
+    GstBuffer *buf = (GstBuffer *) info->data;
+    NvDsFrameMeta *frame_meta = NULL;
+    NvOSD_TextParams *txt_params = NULL;
+    guint vehicle_count = 0;
+    guint person_count = 0;
+    guint safety_count = 0;
+    guint lable_i = 0;
+    gboolean is_first_object = TRUE;
+    NvDsMetaList *l_frame, *l_obj, *l_class, *l_label;
+    NvDsDisplayMeta *display_meta = NULL;
+    NvDsClassifierMeta * class_meta = NULL;
+    NvDsLabelInfo * label_info = NULL;
+
+    NvDsBatchMeta *batch_meta = gst_buffer_get_nvds_batch_meta (buf);
+    if (!batch_meta) {
+        // No batch meta attached.
+        return GST_PAD_PROBE_OK;
+    }
+
+    // g_print("sgie2 batch frame meta num is %d\n", batch_meta->num_frames_in_batch);
+    for (l_frame = batch_meta->frame_meta_list; l_frame; l_frame = l_frame->next) {
+        frame_meta = (NvDsFrameMeta *) l_frame->data;
+
+        // g_print("sgie2 frame meta num is %d\n", frame_meta->num_obj_meta);
+        if (frame_meta == NULL) {
+          // Ignore Null frame meta.
+          continue;
+        }
+
+        is_first_object = TRUE;
+
+        for (l_obj = frame_meta->obj_meta_list; l_obj; l_obj = l_obj->next) {
+            NvDsObjectMeta *obj_meta = (NvDsObjectMeta *) l_obj->data;
+
+            if (obj_meta == NULL) {
+              // Ignore Null object.
+              continue;
+            }
+
+            for (l_class = obj_meta->classifier_meta_list; l_class != NULL; l_class = l_class->next) {
+                class_meta = (NvDsClassifierMeta *)(l_class->data);
+                if (!class_meta) continue;
+                if (class_meta->unique_component_id == SGIE1_CLASSIFIER_UID) {
+                    // g_print("sgie2 class meta uid: %d  num labels is %d\n", class_meta->unique_component_id, class_meta->num_labels);
+                    for (lable_i = 0, l_label = class_meta->label_info_list; lable_i < class_meta->num_labels && l_label; lable_i++, l_label = l_label->next) {
+                        label_info = (NvDsLabelInfo *) (l_label->data);
+                        if (label_info) {
+                            // g_print("sgie2 label id: %d , result class id:%d, result label: %s \n ", label_info->label_id, label_info->result_class_id, label_info->result_label);
+                            // g_print("sgie2 class id b %d\n", obj_meta->class_id);
+                            // g_print("sgie2 class id %d\n", obj_meta->class_id);
+                            if (label_info->label_id == 0 && label_info->result_class_id == 0) {
+                                obj_meta->class_id = label_info->result_class_id;
+                                obj_meta->unique_component_id = class_meta->unique_component_id;
+                                g_print("obj meta label %s, conf %f\n", obj_meta->obj_label, obj_meta->confidence);
+                                // g_print("label id: %d , result class id:%d, result label: %s \n ", label_info->label_id, label_info->result_class_id, label_info->result_label);
+                            }
+                        }
+                    }
+                }
+            }
+          }
+        }
+
+        // g_print("display meta rect num is %d\n", display_meta->num_rects);
+
+    
+
+    return GST_PAD_PROBE_OK;
+}
+
 
 
 int main(int argc, char* argv[]) {
@@ -738,6 +834,7 @@ int main(int argc, char* argv[]) {
     GstBus* bus = NULL;
     guint bus_watch_id;
     GstPad *dec_src_pad = NULL;
+    GstPad *sgie2_sink_pad = NULL;
 
     int current_device = -1;
     cudaGetDevice(&current_device);
@@ -898,8 +995,8 @@ int main(int argc, char* argv[]) {
 
     // ll-lib-file=/opt/nvidia/deepstream/deepstream-6.0/lib/libnvds_nvmultiobjecttracker.so 
 
-    g_object_set (G_OBJECT (sink), "sync", FALSE, "max-lateness", -1,
-                  "async", FALSE, NULL);
+    // g_object_set (G_OBJECT (sink), "sync", FALSE, "max-lateness", -1,
+    //               "async", FALSE, NULL);
     // g_object_set (G_OBJECT(sink), "gpu-id", GPU_ID, NULL);
     // g_object_set (G_OBJECT(sink), "rows", atoi(argv[1]), NULL);
     // g_object_set (G_OBJECT(sink), "columns", atoi(argv[2]), NULL);
@@ -957,7 +1054,8 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    if (!gst_element_link_many (streammux, pgie, sgie1, nvtracker1,
+    // if (!gst_element_link_many (streammux, pgie, sgie1, nvtracker1,
+    if (!gst_element_link_many (streammux, pgie, nvtracker1, sgie1,
                                 sgie2, nvvidconv, nvosd, tee, NULL)) {
         g_printerr ("Elements could not be linked. Exiting.\n");
         return -1;
@@ -1033,6 +1131,14 @@ int main(int argc, char* argv[]) {
                 osd_sink_pad_buffer_probe, NULL, NULL);
         }
     gst_object_unref (osd_sink_pad);
+
+    sgie2_sink_pad = gst_element_get_static_pad (sgie2, "sink");
+    if (!sgie2_sink_pad) {
+        g_print("Unable to get sgie2 sink pad\n");
+    } else {
+      gst_pad_add_probe(sgie2_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
+          sgie2_sink_pad_buffer_probe, NULL, NULL);
+    }
 
 
     /* Set the pipeline to "playing" state */
