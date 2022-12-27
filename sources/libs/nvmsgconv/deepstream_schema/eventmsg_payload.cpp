@@ -479,6 +479,7 @@ generate_object_object (void *privData, NvDsEventMsgMeta *meta)
           json_object_set_string_member (jobject, "type", dsObj->type);
           json_object_set_string_member (jobject, "license", dsObj->license);
           json_object_set_double_member (jobject, "confidence", meta->confidence);
+          json_object_set_string_member (objectObj, "imagePath", dsObj->imagePath);
         }
       } else {
         json_object_set_string_member (jobject, "type", "");
@@ -601,6 +602,11 @@ gchar* generate_event_message (void *privData, NvDsEventMsgMeta *meta)
     json_object_set_string_member (rootObj, "videoPath", meta->videoPath);
   else
     json_object_set_string_member (rootObj, "videoPath", "");
+  
+  if (meta->otherAttrs)
+    json_object_set_string_member (rootObj, "fullImagePath", meta->otherAttrs);
+  else
+    json_object_set_string_member (rootObj, "fullImagePath", "");
 
   rootNode = json_node_new (JSON_NODE_OBJECT);
   json_node_set_object (rootNode, rootObj);

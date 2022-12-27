@@ -36,6 +36,9 @@
 #include "gstnvdsmeta.h"
 #include "nvdsmeta_schema.h"
 
+#include "nvbufsurface.h"
+#include "nvds_obj_encode.h"
+
 #define PGIE_CONFIG_FILE  "perf_demo_pgie_config.txt"
 #define SGIE1_CONFIG_FILE "perf_demo_sgie1_config.txt"
 #define SGIE2_CONFIG_FILE "perf_demo_sgie2_config_yolov5_onnx.txt"
@@ -53,6 +56,7 @@
 
 #define PGIE_CLASS_ID_VEHICLE 2
 #define PGIE_CLASS_ID_PERSON 0
+#define SGIE0_CLASS_ID_HEAD 0
 #define SGIE1_CLASS_ID_UNSAFETYBELT 12
 #define MAX_DISPLAY_LEN 64
 
@@ -374,6 +378,8 @@ static gpointer meta_copy_func (gpointer data, gpointer user_data)
         obj->type = g_strdup (srcObj->type);
       if (srcObj->license)
         obj->license = g_strdup (srcObj->license);
+      if (srcObj->imagePath)
+        obj->imagePath = g_strdup (srcObj->imagePath);
       dstMeta->extMsg = obj;
       dstMeta->extMsgSize = sizeof (NvDsViolationObject);
     }
@@ -431,6 +437,8 @@ static void meta_free_func (gpointer data, gpointer user_data)
         g_free (obj->type);
       if (obj->license)
         g_free (obj->license);
+      if (obj->imagePath)
+        g_free (obj->imagePath);
     }
     g_free (srcMeta->extMsg);
     srcMeta->extMsgSize = 0;
@@ -474,7 +482,7 @@ generate_person_meta (gpointer data)
 }
 
 static void
-generate_event_msg_meta (gpointer data, gint class_id, NvDsObjectMeta * obj_params)
+generate_event_msg_meta (gpointer data, gint class_id, NvDsObjectMeta * obj_params, const gchar * save_image_path)
 {
   NvDsEventMsgMeta *meta = (NvDsEventMsgMeta *) data;
   meta->sensorId = 0;
@@ -503,6 +511,7 @@ generate_event_msg_meta (gpointer data, gint class_id, NvDsObjectMeta * obj_para
     NvDsViolationObject *obj = (NvDsViolationObject *) g_malloc0 (sizeof (NvDsViolationObject));
     obj->type = g_strdup ("unsafety-belt");
     obj->license = g_strdup ("");
+    obj->imagePath = g_strdup(save_image_path);
 
     meta->extMsg = obj;
     meta->extMsgSize = sizeof (NvDsViolationObject);
@@ -532,6 +541,7 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
     guint vehicle_count = 0;
     guint person_count = 0;
     guint safety_count = 0;
+    guint num_rects = 0;
     guint lable_i = 0;
     gboolean is_first_object = TRUE;
     NvDsMetaList *l_frame, *l_obj, *l_class, *l_label;
@@ -558,7 +568,7 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
           // Ignore Null frame meta.
           continue;
         }
-
+        continue;
         is_first_object = TRUE;
 
         for (l_obj = frame_meta->obj_meta_list; l_obj; l_obj = l_obj->next) {
@@ -568,6 +578,10 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
               // Ignore Null object.
               continue;
             }
+
+            // if (obj_meta->class_id == 110) {
+            //   g_print("osd 110 parnet is %p\n", obj_meta->parent);
+            // }
 
             txt_params = &(obj_meta->text_params);
             // if (txt_params->display_text)
@@ -603,6 +617,7 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
               // g_print("safety detect result is %s(%d)\n", obj_meta->obj_label, obj_meta->class_id);
               if (obj_meta->class_id == 12) {
                     safety_count++;
+                    num_rects++;
                     // g_print("safety detect result is %s(%d) conf %f\n", obj_meta->obj_label, obj_meta->class_id, obj_meta->confidence);
                     // g_print(" is %d\n ", NVDS_EVENT_CUSTOM);
                     // g_print("safety parent %p  current %p \n", obj_meta->parent, obj_meta);
@@ -671,6 +686,50 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
                * 对于相同trackid的对象，可进行事件计数，达到某一阈值则向数据中台上报事件。
                * 
               */
+              // save img at local device
+              /* To verify  encoded metadata of cropped objects, we iterate through the
+              * user metadata of each object and if a metadata of the type
+              * 'NVDS_CROP_IMAGE_META' is found then we write that to a file as
+              * implemented below.
+              */
+              char fileNameString[FILE_NAME_SIZE];
+              const char *osd_string = "OSD";
+              const char *save_img_path = "/opt/nvidia/deepstream/deepstream-6.0/sources/apps/sample_apps/deepstream-perf-test-pipeline1/result_imgs/";
+              int obj_res_width = (int) obj_meta->rect_params.width;
+              int obj_res_height = (int) obj_meta->rect_params.height;
+              // if(prop.integrated) {
+              //   obj_res_width = GST_ROUND_DOWN_2(obj_res_width);
+              //   obj_res_height = GST_ROUND_DOWN_2(obj_res_height);
+              // }
+
+              snprintf (fileNameString, FILE_NAME_SIZE, "%s%s_%d_%d_%d_%s_%dx%d.jpg",
+                  save_img_path,
+                  osd_string, frame_number, frame_meta->source_id, num_rects,
+                  obj_meta->obj_label, obj_res_width, obj_res_height);
+              g_print("---------------save image buffer to file %s\n", fileNameString);
+              /* For Demonstration Purposes we are writing metadata to jpeg images of
+              * only vehicles for the first 100 frames only.
+              * The files generated have a 'OSD' prefix. */
+              if (obj_meta->class_id == SGIE1_CLASS_ID_UNSAFETYBELT && 0) {
+                g_print("---------------save image buffer to file %s\n", fileNameString);
+                NvDsUserMetaList *usrMetaList = obj_meta->obj_user_meta_list;
+                FILE *file;
+                while (usrMetaList != NULL) {
+                  NvDsUserMeta *usrMetaData = (NvDsUserMeta *) usrMetaList->data;
+                  if (usrMetaData->base_meta.meta_type == NVDS_CROP_IMAGE_META) {
+                    NvDsObjEncOutParams *enc_jpeg_image =
+                        (NvDsObjEncOutParams *) usrMetaData->user_meta_data;
+                    /* Write to File */
+                    file = fopen (fileNameString, "wb");
+                    fwrite (enc_jpeg_image->outBuffer, sizeof (uint8_t),
+                        enc_jpeg_image->outLen, file);
+                    fclose (file);
+                    usrMetaList = NULL;
+                  } else {
+                    usrMetaList = usrMetaList->next;
+                  }
+                }
+              }
 
               NvDsEventMsgMeta *msg_meta = (NvDsEventMsgMeta *) g_malloc0 (sizeof (NvDsEventMsgMeta));
               msg_meta->bbox.top = obj_meta->rect_params.top;
@@ -680,7 +739,41 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
               msg_meta->frameId = frame_number;
               msg_meta->trackingId = obj_meta->object_id;
               msg_meta->confidence = obj_meta->confidence;
-              generate_event_msg_meta (msg_meta, obj_meta->class_id, obj_meta);
+
+
+              // {
+              //     "messageid": "08826813-2f56-4bc1-9e6b-8c507a81917b",
+              //     "mdsversion": "1.0",
+              //     "@timestamp": "2022-12-26T01:47:49.389Z",
+              //     "analyticsModule": {
+              //         "id": "001",
+              //         "description": "Traffic Violation Detection",
+              //         "source": "OpenALR",
+              //         "version": "1.0"
+              //     },
+              //     "object": {
+              //         "id": "18446744073709551615",
+              //         "violation": {
+              //             "type": "unsafety-belt",
+              //             "license": "",
+              //             "confidence": 0.724534273147583
+              //         },
+              //         "bbox": {
+              //             "topleftx": 809,
+              //             "toplefty": 320,
+              //             "bottomrightx": 1279,
+              //             "bottomrighty": 732
+              //         }
+              //     },
+              //     "event": {
+              //         "id": "bbd352fb-2d67-4384-abc2-e7e943179556",
+              //         "type": "unsafety-belt"
+              //     },
+              //     "videoPath": "",
+              //     "imagePath": ""
+              // }
+
+              generate_event_msg_meta (msg_meta, obj_meta->class_id, obj_meta, fileNameString);
 
               NvDsUserMeta *user_event_meta = nvds_acquire_user_meta_from_pool (batch_meta);
               if (user_event_meta) {
@@ -693,6 +786,9 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
                 g_print ("Error in attaching event meta to buffer\n");
               }
               is_first_object = FALSE;
+
+
+
           }
         }
 
@@ -787,6 +883,13 @@ sgie2_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
               // Ignore Null object.
               continue;
             }
+            
+            // NvDsObjectMeta *obj_uu = nvds_acquire_obj_meta_from_pool(batch_meta);
+            // obj_uu->class_id = 110;
+            // // nvds_add_obj_meta_to_frame(frame_meta, obj_uu, obj_meta);
+            // nvds_add_obj_meta_to_frame(frame_meta, obj_uu, obj_meta);
+            // // obj_uu->parent = obj_meta;
+            // // g_print("parent %p \n", obj_uu->parent);
 
             for (l_class = obj_meta->classifier_meta_list; l_class != NULL; l_class = l_class->next) {
                 class_meta = (NvDsClassifierMeta *)(l_class->data);
@@ -799,10 +902,10 @@ sgie2_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
                             // g_print("sgie2 label id: %d , result class id:%d, result label: %s \n ", label_info->label_id, label_info->result_class_id, label_info->result_label);
                             // g_print("sgie2 class id b %d\n", obj_meta->class_id);
                             // g_print("sgie2 class id %d\n", obj_meta->class_id);
-                            if (label_info->label_id == 0 && label_info->result_class_id == 0) {
+                            if (label_info->label_id == 0 && label_info->result_class_id == SGIE0_CLASS_ID_HEAD) {
                                 obj_meta->class_id = label_info->result_class_id;
                                 obj_meta->unique_component_id = class_meta->unique_component_id;
-                                g_print("obj meta label %s, conf %f\n", obj_meta->obj_label, obj_meta->confidence);
+                                // g_print("obj meta label %s, conf %f\n", obj_meta->obj_label, obj_meta->confidence);
                                 // g_print("label id: %d , result class id:%d, result label: %s \n ", label_info->label_id, label_info->result_class_id, label_info->result_label);
                             }
                         }
@@ -813,9 +916,260 @@ sgie2_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
         }
 
         // g_print("display meta rect num is %d\n", display_meta->num_rects);
+    return GST_PAD_PROBE_OK;
+}
 
-    
+#define save_img TRUE
+// #define save_img FALSE
+#define attach_user_meta FALSE
+// #define attach_user_meta TRUE
+bool save_cropped_images_enabled = true;
+bool save_full_frame_enabled = true;
 
+static GstPadProbeReturn
+sgie2_src_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
+    gpointer ctx)
+{
+    GstBuffer *buf = (GstBuffer *) info->data;
+
+    GstMapInfo inmap = GST_MAP_INFO_INIT;
+    if (!gst_buffer_map (buf, &inmap, GST_MAP_READ)) {
+      GST_ERROR ("input buffer mapinfo failed");
+      // return GST_FLOW_ERROR;
+      return GST_PAD_PROBE_DROP;
+    }
+    NvBufSurface *ip_surf = (NvBufSurface *) inmap.data;
+    gst_buffer_unmap (buf, &inmap);
+
+
+    NvDsFrameMeta *frame_meta = NULL;
+    NvOSD_TextParams *txt_params = NULL;
+    guint vehicle_count = 0;
+    guint person_count = 0;
+    guint safety_count = 0;
+    guint lable_i = 0;
+    gboolean is_first_object = TRUE;
+    NvDsMetaList *l_frame, *l_obj, *l_class, *l_label;
+    NvDsDisplayMeta *display_meta = NULL;
+    NvDsClassifierMeta * class_meta = NULL;
+    NvDsLabelInfo * label_info = NULL;
+
+    NvDsBatchMeta *batch_meta = gst_buffer_get_nvds_batch_meta (buf);
+    if (!batch_meta) {
+        // No batch meta attached.
+        return GST_PAD_PROBE_OK;
+    }
+
+    // g_print("sgie2 batch frame meta num is %d\n", batch_meta->num_frames_in_batch);
+    for (l_frame = batch_meta->frame_meta_list; l_frame; l_frame = l_frame->next) {
+        frame_meta = (NvDsFrameMeta *) l_frame->data;
+
+        // g_print("sgie2 frame meta num is %d\n", frame_meta->num_obj_meta);
+        if (frame_meta == NULL) {
+          // Ignore Null frame meta.
+          continue;
+        }
+
+        is_first_object = TRUE;
+
+        for (l_obj = frame_meta->obj_meta_list; l_obj; l_obj = l_obj->next) {
+            NvDsObjectMeta *obj_meta = (NvDsObjectMeta *) l_obj->data;
+
+            if (obj_meta == NULL) {
+              // Ignore Null object.
+              continue;
+            }
+            // if (obj_meta->class_id == 110) {
+            //   g_print("110 parnet is %p  %s\n", obj_meta->parent, obj_meta->parent->obj_label);
+            // }
+
+
+            if (obj_meta->unique_component_id == SGIE2_DETECTOR_UID) {
+              // g_print("safety detect result is %s(%d)\n", obj_meta->obj_label, obj_meta->class_id);
+              if (obj_meta->class_id == SGIE1_CLASS_ID_UNSAFETYBELT) {
+                  safety_count++;
+                  
+                  if (is_first_object && !(frame_number % frame_interval) && safety_count) {
+                      /* Frequency of messages to be send will be based on use case.
+                      * Here message is being sent for first object every frame_interval(default=30).
+                      */
+
+                      /**
+                      * 事件定义：
+                      * 未系安全带事件
+                      *    车头检测到未系安全带，则事件发生
+                      * 摩托车未戴头盔事件
+                      *    摩托车区域内检测到未带头盔，则事件发生
+                      * 
+                      * 上报策略：
+                      * 对于相同trackid的对象，可进行事件计数，达到某一阈值则向数据中台上报事件。
+                      * 
+                      */
+                      // save img at local device
+                      /* To verify  encoded metadata of cropped objects, we iterate through the
+                      * user metadata of each object and if a metadata of the type
+                      * 'NVDS_CROP_IMAGE_META' is found then we write that to a file as
+                      * implemented below.
+                      */
+                      char fileNameString[FILE_NAME_SIZE];
+                      const char *osd_string = "OSD";
+                      const char *save_img_path = "/opt/nvidia/deepstream/deepstream-6.0/sources/apps/sample_apps/deepstream-perf-test-pipeline1/result_imgs/";
+                      int obj_res_width = (int) obj_meta->rect_params.width;
+                      int obj_res_height = (int) obj_meta->rect_params.height;
+                      // if(prop.integrated) {
+                      //   obj_res_width = GST_ROUND_DOWN_2(obj_res_width);
+                      //   obj_res_height = GST_ROUND_DOWN_2(obj_res_height);
+                      // }
+
+                      char fileNameStringFull[FILE_NAME_SIZE];
+                      const char *save_full_img_path = "/opt/nvidia/deepstream/deepstream-6.0/sources/apps/sample_apps/deepstream-perf-test-pipeline1/full_result_imgs/";
+                      snprintf (fileNameStringFull, FILE_NAME_SIZE, "%s%s_%d_%d_%d_%s_%dx%d.jpg",
+                          save_full_img_path,
+                          osd_string, frame_number, frame_meta->source_id, 1,
+                          obj_meta->obj_label, ip_surf->surfaceList[frame_meta->batch_id].width, ip_surf->surfaceList[frame_meta->batch_id].height);
+
+
+                      snprintf (fileNameString, FILE_NAME_SIZE, "%s%s_%d_%d_%d_%s_%dx%d.jpg",
+                          save_img_path,
+                          osd_string, frame_number, frame_meta->source_id, 1,
+                          obj_meta->obj_label, obj_res_width, obj_res_height);
+                      // g_print("---------------save image buffer to file %s\n", fileNameString);
+
+                      NvDsEventMsgMeta *msg_meta = (NvDsEventMsgMeta *) g_malloc0 (sizeof (NvDsEventMsgMeta));
+                      msg_meta->bbox.top = obj_meta->rect_params.top;
+                      msg_meta->bbox.left = obj_meta->rect_params.left;
+                      msg_meta->bbox.width = obj_meta->rect_params.width;
+                      msg_meta->bbox.height = obj_meta->rect_params.height;
+                      msg_meta->frameId = frame_number;
+                      msg_meta->trackingId = obj_meta->object_id;
+                      msg_meta->confidence = obj_meta->confidence;
+                      msg_meta->otherAttrs = g_strdup(fileNameStringFull);
+                      // g_print("------full image path %s\n", msg_meta->otherAttrs);
+
+
+                      // {
+                      //     "messageid": "08826813-2f56-4bc1-9e6b-8c507a81917b",
+                      //     "mdsversion": "1.0",
+                      //     "@timestamp": "2022-12-26T01:47:49.389Z",
+                      //     "analyticsModule": {
+                      //         "id": "001",
+                      //         "description": "Traffic Violation Detection",
+                      //         "source": "OpenALR",
+                      //         "version": "1.0"
+                      //     },
+                      //     "object": {
+                      //         "id": "18446744073709551615",
+                      //         "violation": {
+                      //             "type": "unsafety-belt",
+                      //             "license": "",
+                      //             "confidence": 0.724534273147583
+                      //         },
+                      //         "bbox": {
+                      //             "topleftx": 809,
+                      //             "toplefty": 320,
+                      //             "bottomrightx": 1279,
+                      //             "bottomrighty": 732
+                      //         },
+                      //         "imagePath": ""
+                      //     },
+                      //     "event": {
+                      //         "id": "bbd352fb-2d67-4384-abc2-e7e943179556",
+                      //         "type": "unsafety-belt"
+                      //     },
+                      //     "videoPath": "",
+                      //     "fullImagePath": ""
+                      // }
+
+                      generate_event_msg_meta (msg_meta, obj_meta->class_id, obj_meta, fileNameString);
+
+                      NvDsUserMeta *user_event_meta = nvds_acquire_user_meta_from_pool (batch_meta);
+                      if (user_event_meta) {
+                        user_event_meta->user_meta_data = (void *) msg_meta;
+                        user_event_meta->base_meta.meta_type = NVDS_EVENT_MSG_META;
+                        user_event_meta->base_meta.copy_func = (NvDsMetaCopyFunc) meta_copy_func;
+                        user_event_meta->base_meta.release_func = (NvDsMetaReleaseFunc) meta_free_func;
+                        nvds_add_user_meta_to_frame(frame_meta, user_event_meta);
+                      } else {
+                        g_print ("Error in attaching event meta to buffer\n");
+                      }
+                      // is_first_object = FALSE;
+
+                      // enc image to buffer and save at local device 
+                      NvDsObjEncUsrArgs userData = { 0 };
+                      /* To be set by user */
+                      userData.saveImg = save_img;
+                      userData.attachUsrMeta = attach_user_meta;
+                      /* Set if Image scaling Required */
+                      userData.scaleImg = FALSE;
+                      userData.scaledWidth = 0;
+                      userData.scaledHeight = 0;
+                      /* Preset */
+                      userData.objNum = 1;
+                      /* Quality */
+                      userData.quality = 80;
+                      // userData.fileNameImg = &fileNameString;
+                      memcpy(userData.fileNameImg, fileNameString, sizeof(fileNameString));
+                      // g_print("file name is %s\n", userData.fileNameImg);
+
+                      if (save_cropped_images_enabled) {
+                          /* Conditions that user needs to set to encode the detected objects of
+                            * interest. Here, by default all the detected objects are encoded.
+                            * For demonstration, we will encode the first object in the frame */
+                          /*Main Function Call */
+                          if (obj_meta->parent) {
+                              g_print ("Safety found for parent object %p (type=%s)\n",
+                                obj_meta->parent,  obj_meta->parent->obj_label);
+                              nvds_obj_enc_process ((NvDsObjEncCtxHandle)ctx, &userData, ip_surf, obj_meta->parent, frame_meta);
+                          } else {
+                              nvds_obj_enc_process ((NvDsObjEncCtxHandle)ctx, &userData, ip_surf, obj_meta, frame_meta);
+                          }
+
+                      }
+                      if (save_full_frame_enabled) {
+                        if (is_first_object) {
+                            memcpy(userData.fileNameImg, fileNameStringFull, sizeof(fileNameStringFull));
+                            unsigned dummy_counter = 0;
+                            /// Creating a special object meta in order to save a full frame
+                            NvDsObjectMeta dummy_obj_meta;
+                            dummy_obj_meta.rect_params.width = ip_surf->surfaceList[frame_meta->batch_id].width;
+                            dummy_obj_meta.rect_params.height = ip_surf->surfaceList[frame_meta->batch_id].height;
+                            dummy_obj_meta.rect_params.top = 0;
+                            dummy_obj_meta.rect_params.left = 0;
+                            nvds_obj_enc_process((NvDsObjEncCtxHandle)ctx, &userData, ip_surf, &dummy_obj_meta, frame_meta);
+                        }
+                      }
+                      is_first_object = FALSE;
+
+                      // // save buffer to local file at userMeta info
+                      // NvDsUserMetaList *usrMetaList = obj_meta->obj_user_meta_list;
+                      // FILE *file;
+                      // while (usrMetaList != NULL) {
+                      //   NvDsUserMeta *usrMetaData = (NvDsUserMeta *) usrMetaList->data;
+                      //   if (usrMetaData->base_meta.meta_type == NVDS_CROP_IMAGE_META) {
+                      //     NvDsObjEncOutParams *enc_jpeg_image =
+                      //         (NvDsObjEncOutParams *) usrMetaData->user_meta_data;
+                      //     /* Write to File */
+                      //     file = fopen (fileNameString, "wb");
+                      //     fwrite (enc_jpeg_image->outBuffer, sizeof (uint8_t),
+                      //         enc_jpeg_image->outLen, file);
+                      //     fclose (file);
+                      //     usrMetaList = NULL;
+                      //   } else {
+                      //     usrMetaList = usrMetaList->next;
+                      //   }
+                      // }
+                  }
+                    
+                    
+
+              }
+            }
+        }
+        frame_number++;
+    }
+
+    // g_print("display meta rect num is %d\n", display_meta->num_rects);
+    nvds_obj_enc_finish((NvDsObjEncCtxHandle)ctx);
     return GST_PAD_PROBE_OK;
 }
 
@@ -1010,6 +1364,7 @@ int main(int argc, char* argv[]) {
     /* we add all elements into the pipeline */
     gst_bin_add_many (GST_BIN (pipeline),
         source, h264parser, decoder, streammux, pgie, nvtracker1, sgie1, sgie2, nvvidconv,
+        // source, h264parser, decoder, streammux, pgie, nvtracker1, sgie1, sgie2, 
         nvosd, sink, tee, queue1, queue2, msgconv, msgbroker, NULL);
     if(prop.integrated) {
         gst_bin_add (GST_BIN (pipeline), transform);
@@ -1057,6 +1412,7 @@ int main(int argc, char* argv[]) {
     // if (!gst_element_link_many (streammux, pgie, sgie1, nvtracker1,
     if (!gst_element_link_many (streammux, pgie, nvtracker1, sgie1,
                                 sgie2, nvvidconv, nvosd, tee, NULL)) {
+                                // sgie2,  nvosd, tee, NULL)) {
         g_printerr ("Elements could not be linked. Exiting.\n");
         return -1;
     }
@@ -1132,13 +1488,33 @@ int main(int argc, char* argv[]) {
         }
     gst_object_unref (osd_sink_pad);
 
+
+    /*Creat Context for Object Encoding */
+    NvDsObjEncCtxHandle obj_ctx_handle = nvds_obj_enc_create_context ();
+    if (!obj_ctx_handle) {
+      g_print ("Unable to create context\n");
+      return -1;
+    }
+
     sgie2_sink_pad = gst_element_get_static_pad (sgie2, "sink");
     if (!sgie2_sink_pad) {
         g_print("Unable to get sgie2 sink pad\n");
     } else {
+      
       gst_pad_add_probe(sgie2_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
-          sgie2_sink_pad_buffer_probe, NULL, NULL);
+          sgie2_sink_pad_buffer_probe, obj_ctx_handle, NULL);
     }
+    gst_object_unref(sgie2_sink_pad);
+
+    sgie2_sink_pad = gst_element_get_static_pad (sgie2, "src");
+    if (!sgie2_sink_pad) {
+        g_print("Unable to get sgie2 src pad\n");
+    } else {
+      gst_pad_add_probe(sgie2_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
+          sgie2_src_pad_buffer_probe, obj_ctx_handle, NULL);
+    }
+    gst_object_unref(sgie2_sink_pad);
+    
 
 
     /* Set the pipeline to "playing" state */
@@ -1148,6 +1524,9 @@ int main(int argc, char* argv[]) {
     /* Wait till pipeline encounters an error or EOS */
     g_print("Running...\n");
     g_main_loop_run(loop);
+
+    /* Destroy context for Object Encoding */
+    nvds_obj_enc_destroy_context (obj_ctx_handle);
 
     /* Out of the main loop, clean up nicely */
     g_print("Returned, stopping playback\n");

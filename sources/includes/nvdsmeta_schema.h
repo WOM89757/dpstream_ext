@@ -229,6 +229,7 @@ typedef struct NvDsFaceObjectWithExt {
 typedef struct NvDsViolationObject {
   gchar *type;      /**< Holds a pointer to the type of the violation. */
   gchar *license;   /**< Holds a pointer to the vehicle license number of the violation.*/
+  gchar *imagePath;   /**< Holds a pointer to the image buffer of frame.*/
 } NvDsViolationObject;
 
 
