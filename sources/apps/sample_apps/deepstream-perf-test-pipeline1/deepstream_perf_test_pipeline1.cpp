@@ -179,12 +179,14 @@ static void get_file_list(char* inputDir) {
 }
 
 static gboolean source_switch_thread(gpointer* data) {
-    static guint stream_num = 0;
+    g_print("change ----------- source \n ");
+    static guint stream_num = 1;
     const char* location = file_list[stream_num % file_list.size()].c_str();
 
     GstElement* pipeline = (GstElement*) data;
     GstElement* source = gst_bin_get_by_name(GST_BIN(pipeline), "file-source");
-    GstElement* h264parser = gst_bin_get_by_name(GST_BIN(pipeline), "h264-parser");
+    GstElement* h264parser = gst_bin_get_by_name(GST_BIN(pipeline), "decodebin-decoder");
+    // GstElement* h264parser = gst_bin_get_by_name(GST_BIN(pipeline), "h264-parser");
     GstElement* sink = gst_bin_get_by_name(GST_BIN(pipeline), "nvvideo-renderer");
     gst_element_set_state(pipeline, GST_STATE_PAUSED);
     GstStateChangeReturn ret = GST_STATE_CHANGE_FAILURE;
@@ -229,7 +231,9 @@ static GstPadProbeReturn eos_probe_cb(GstPad* pad, GstPadProbeInfo* info, gpoint
     }
 
     if ((info->type & GST_PAD_PROBE_TYPE_EVENT_BOTH)) {
+      g_print("--------------eos probe cb event  type %d \n", GST_EVENT_TYPE(event));
         if (GST_EVENT_TYPE (event) == GST_EVENT_EOS) {
+            g_print("--------------eos event\n");
             ret = gst_element_seek((GstElement*) u_data,
                                    1.0,
                                    GST_FORMAT_TIME,
@@ -1173,7 +1177,70 @@ sgie2_src_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
     return GST_PAD_PROBE_OK;
 }
 
+int sink_id = 0;
+/* This function will be called by the pad-added signal */
+static void pad_added_handler (GstElement *src, GstPad *new_pad, GstElement *data) {
+  
+  char sink_str[9] ;
+  snprintf(sink_str, 9, "sink_%d", sink_id);
+  GstPad *sink_pad = gst_element_get_request_pad (data, sink_str);
+  GstPadLinkReturn ret;
+  GstCaps *new_pad_caps = NULL;
+  GstStructure *new_pad_struct = NULL;
+  const gchar *new_pad_type = NULL;
 
+  if (!sink_pad) {
+      g_printerr ("Streammux request sink pad failed at pad added handler. Exiting.\n");
+      g_print ("sinkpad Obtained request pad %s.\n", gst_pad_get_name (sink_pad));
+      goto exit;
+  }
+
+  g_print ("Received data '%s' from '%s':\n", GST_PAD_NAME (sink_pad), GST_ELEMENT_NAME (data));
+  g_print ("Received new pad '%s' from '%s':\n", GST_PAD_NAME (new_pad), GST_ELEMENT_NAME (src));
+
+  /* If our converter is already linked, we have nothing to do here */
+  if (gst_pad_is_linked (sink_pad)) {
+    g_print ("We are already linked. Ignoring.\n");
+    goto exit;
+  }
+
+  /* Check the new pad's type */
+  new_pad_caps = gst_pad_get_current_caps (new_pad);
+  new_pad_struct = gst_caps_get_structure (new_pad_caps, 0);
+  new_pad_type = gst_structure_get_name (new_pad_struct);
+  if (!g_str_has_prefix (new_pad_type, "video/x-raw")) {
+    g_print ("It has type '%s' which is not raw audio. Ignoring.\n", new_pad_type);
+    goto exit;
+  }
+
+  /* Attempt the link */
+
+
+  // if (gst_pad_link (new_pad, sink_pad) != GST_PAD_LINK_OK) {
+  //     g_printerr ("Failed to link decoder to stream muxer in pad added handler. Exiting.\n");
+  //     // return -1;
+  // }
+
+  ret = gst_pad_link (new_pad, sink_pad);
+  // g_print("sssssssss\n");
+
+
+
+  if (GST_PAD_LINK_FAILED (ret)) {
+    g_print ("Type is '%s' but link failed.\n", new_pad_type);
+  } else {
+    g_print ("Link succeeded (type '%s').\n", new_pad_type);
+    // sink_id++;
+  }
+
+exit:
+  /* Unreference the new pad's caps, if we got them */
+  if (new_pad_caps != NULL)
+    gst_caps_unref (new_pad_caps);
+
+  /* Unreference the sink pad */
+  gst_object_unref (sink_pad);
+}
 
 int main(int argc, char* argv[]) {
 
@@ -1219,7 +1286,8 @@ int main(int argc, char* argv[]) {
     h264parser = gst_element_factory_make("h264parse", "h264-parser");
 
     /* Use nvdec_h264 for hardware accelerated decode on GPU */
-    decoder = gst_element_factory_make ("nvv4l2decoder", "nvv4l2-decoder");
+    // decoder = gst_element_factory_make ("nvv4l2decoder", "nvv4l2-decoder");
+    decoder = gst_element_factory_make ("decodebin", "decodebin-decoder");
 
     /* Create nvstreammux instance to form batches from one or more sources. */
     streammux = gst_element_factory_make ("nvstreammux", "stream-muxer");
@@ -1264,7 +1332,8 @@ int main(int argc, char* argv[]) {
     transform = gst_element_factory_make ("nvegltransform", "nvegl-transform");
     sink = gst_element_factory_make ("nveglglessink", "nvvideo-renderer");
   } else {
-    sink = gst_element_factory_make ("fpsdisplaysink", "nvvideo-renderer");
+    sink = gst_element_factory_make ("nveglglessink", "nvvideo-renderer");
+    // sink = gst_element_factory_make ("fpsdisplaysink", "nvvideo-renderer");
   } 
 
     /* caps filter for nvvidconv to convert NV12 to RGBA as nvosd expects input
@@ -1280,6 +1349,9 @@ int main(int argc, char* argv[]) {
     g_printerr ("One tegra element could not be created. Exiting.\n");
     return -1;
   }
+  for (int i = 0; i < file_list.size(); i++) {
+    g_print("file list %s\n", file_list[i].c_str());
+  }
 
     /* Set the input filename to the source element */
     g_object_set (G_OBJECT (source), "location", file_list[0].c_str(), NULL);
@@ -1288,7 +1360,7 @@ int main(int argc, char* argv[]) {
                   MUXER_OUTPUT_HEIGHT, "batch-size", 1,
                   "batched-push-timeout", MUXER_BATCH_TIMEOUT_USEC, NULL);
 
-    g_object_set (G_OBJECT(decoder), "gpu-id", GPU_ID, NULL);
+    // g_object_set (G_OBJECT(decoder), "gpu-id", GPU_ID, NULL);
     g_object_set (G_OBJECT(nvvidconv), "gpu-id", GPU_ID, NULL);
     g_object_set (G_OBJECT(nvvidconv2), "gpu-id", GPU_ID, NULL);
     g_object_set (G_OBJECT(nvosd), "gpu-id", GPU_ID, NULL);
@@ -1351,9 +1423,9 @@ int main(int argc, char* argv[]) {
 
     // g_object_set (G_OBJECT (sink), "sync", FALSE, "max-lateness", -1,
     //               "async", FALSE, NULL);
-    // g_object_set (G_OBJECT(sink), "gpu-id", GPU_ID, NULL);
-    // g_object_set (G_OBJECT(sink), "rows", atoi(argv[1]), NULL);
-    // g_object_set (G_OBJECT(sink), "columns", atoi(argv[2]), NULL);
+    g_object_set (G_OBJECT(sink), "gpu-id", GPU_ID, NULL);
+    g_object_set (G_OBJECT(sink), "rows", atoi(argv[1]), NULL);
+    g_object_set (G_OBJECT(sink), "columns", atoi(argv[2]), NULL);
 
     /* we add a message handler */
     bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
@@ -1363,7 +1435,8 @@ int main(int argc, char* argv[]) {
     /* Set up the pipeline */
     /* we add all elements into the pipeline */
     gst_bin_add_many (GST_BIN (pipeline),
-        source, h264parser, decoder, streammux, pgie, nvtracker1, sgie1, sgie2, nvvidconv,
+        // source, h264parser, decoder, streammux, pgie, nvtracker1, sgie1, sgie2, nvvidconv,
+        source,  decoder, streammux, pgie, nvtracker1, sgie1, sgie2, nvvidconv,
         // source, h264parser, decoder, streammux, pgie, nvtracker1, sgie1, sgie2, 
         nvosd, sink, tee, queue1, queue2, msgconv, msgbroker, NULL);
     if(prop.integrated) {
@@ -1379,32 +1452,41 @@ int main(int argc, char* argv[]) {
     *                                     |
     *                                     |-> queue -> msgconv -> msgbroker  */
 
-    GstPad *sinkpad, *srcpad;
-    gchar pad_name_sink[16] = "sink_0";
-    gchar pad_name_src[16] = "src";
+    g_signal_connect (decoder, "pad-added", G_CALLBACK (pad_added_handler), streammux);
 
-    sinkpad = gst_element_get_request_pad (streammux, pad_name_sink);
-    if (!sinkpad) {
-        g_printerr ("Streammux request sink pad failed. Exiting.\n");
-        return -1;
-    }
 
-    srcpad = gst_element_get_static_pad (decoder, pad_name_src);
-    if (!srcpad) {
-        g_printerr ("Decoder request src pad failed. Exiting.\n");
-        return -1;
-    }
+    // GstPad *sinkpad, *srcpad;
+    // gchar pad_name_sink[16] = "sink_0";
+    // gchar pad_name_src[16] = "src_0";
 
-    if (gst_pad_link (srcpad, sinkpad) != GST_PAD_LINK_OK) {
-        g_printerr ("Failed to link decoder to stream muxer. Exiting.\n");
-        return -1;
-    }
+    // sinkpad = gst_element_get_request_pad (streammux, pad_name_sink);
+    // g_print ("sinkpad Obtained request pad %s.\n", gst_pad_get_name (sinkpad));
+    // if (!sinkpad) {
+    //     g_printerr ("Streammux request sink pad failed. Exiting.\n");
+    //     return -1;
+    // }
 
-    gst_object_unref (sinkpad);
-    gst_object_unref (srcpad);
+    // // srcpad = gst_element_get_static_pad (decoder, "src");
+    // srcpad = gst_element_get_request_pad (decoder, pad_name_src);
+    // g_print ("srcpad Obtained request pad %s.\n", gst_pad_get_name (srcpad));
+    // // srcpad = gst_element_get_static_pad (decoder, pad_name_src);
+    // if (!srcpad) {
+    //     g_printerr ("Decoder request src pad failed. Exiting.\n");
+    //     return -1;
+    // }
+    // gst_element_link_pads (source, "src", decoder, "sink");
+
+    // if (gst_pad_link (srcpad, sinkpad) != GST_PAD_LINK_OK) {
+    //     g_printerr ("Failed to link decoder to stream muxer. Exiting.\n");
+    //     return -1;
+    // }
+
+    // gst_object_unref (sinkpad);
+    // gst_object_unref (srcpad);
 
     /* Link the elements together */
-    if (!gst_element_link_many (source, h264parser, decoder, NULL)) {
+    if (!gst_element_link_many (source, decoder, NULL)) {
+    // if (!gst_element_link_many (source, h264parser, decoder, NULL)) {
         g_printerr ("Elements could not be linked: 1. Exiting.\n");
         return -1;
     }
@@ -1462,17 +1544,18 @@ int main(int argc, char* argv[]) {
     gst_object_unref (sink_pad);
 
 
-    dec_src_pad = gst_element_get_static_pad(decoder, "sink");
-    if (!dec_src_pad) {
-        g_print("Unable to get h264parser src pad \n");
-    } else {
-        gst_pad_add_probe(dec_src_pad,
-                          (GstPadProbeType) (GST_PAD_PROBE_TYPE_EVENT_BOTH |
-                                             GST_PAD_PROBE_TYPE_EVENT_FLUSH |
-                                             GST_PAD_PROBE_TYPE_BUFFER),
-                          eos_probe_cb, pipeline, NULL);
-        gst_object_unref(dec_src_pad);
-    }
+    // dec_src_pad = gst_element_get_static_pad(decoder, "sink");
+    // if (!dec_src_pad) {
+    //     g_print("Unable to get h264parser src pad \n");
+    // } else {
+    //     g_print("able to get h264parser src pad \n");
+    //     gst_pad_add_probe(dec_src_pad,
+    //                       (GstPadProbeType) (GST_PAD_PROBE_TYPE_EVENT_BOTH |
+    //                                          GST_PAD_PROBE_TYPE_EVENT_FLUSH |
+    //                                          GST_PAD_PROBE_TYPE_BUFFER),
+    //                       eos_probe_cb, pipeline, NULL);
+    //     gst_object_unref(dec_src_pad);
+    // }
 
 
     /* Lets add probe to get informed of the meta data generated, we add probe to
