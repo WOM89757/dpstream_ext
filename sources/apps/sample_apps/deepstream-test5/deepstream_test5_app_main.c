@@ -1367,6 +1367,7 @@ main (int argc, char *argv[])
     goto done;
   }
 
+  g_print("------------- cfg files is %s num is %d\n", cfg_files[0], num_instances);
   for (i = 0; i < num_instances; i++) {
     appCtx[i] = (AppCtx *) g_malloc0 (sizeof (AppCtx));
     appCtx[i]->person_class_id = -1;

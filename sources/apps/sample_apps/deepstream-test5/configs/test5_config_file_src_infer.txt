@@ -68,7 +68,7 @@ gpu-id=0
 nvbuf-memory-type=0
 
 [sink1]
-enable=1
+enable=0
 #Type - 1=FakeSink 2=EglSink 3=File 4=UDPSink 5=nvoverlaysink 6=MsgConvBroker
 type=6
 msg-conv-config=dstest5_msgconv_sample_config.txt

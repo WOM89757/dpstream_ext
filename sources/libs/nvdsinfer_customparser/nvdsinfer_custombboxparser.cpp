@@ -563,7 +563,7 @@ bool NvDsInferParseCustomMrcnnTLTV2 (std::vector<NvDsInferLayerInfo> const &outp
 }
 
 double sigmoid(double x) {
-    return (1 / (1 + exp(-x)));
+    return (1.0f / (1.0f + exp(-x)));
 }
 
 float clamp(const float val, const float minVal, const float maxVal)
@@ -578,12 +578,29 @@ static NvDsInferParseObjectInfo convertBBox(const float& bx, const float& by, co
 {
     NvDsInferParseObjectInfo b;
     // Restore coordinates to network input resolution
+    // float xCenter = bx * stride;
+    // float yCenter = by * stride;
+    // float x0 = xCenter - bw / 2;
+    // float y0 = yCenter - bh / 2;
+    // float x1 = x0 + bw;
+    // float y1 = y0 + bh;
+
+    // x0 = clamp(x0, 0, netW);
+    // y0 = clamp(y0, 0, netH);
+    // x1 = clamp(x1, 0, netW);
+    // y1 = clamp(y1, 0, netH);
+
+    // b.left = x0;
+    // b.width = clamp(x1 - x0, 0, netW);
+    // b.top = y0;
+    // b.height = clamp(y1 - y0, 0, netH);
+    
     float xCenter = bx * stride;
     float yCenter = by * stride;
-    float x0 = xCenter - bw / 2;
-    float y0 = yCenter - bh / 2;
-    float x1 = x0 + bw;
-    float y1 = y0 + bh;
+    float x0 = xCenter;
+    float y0 = yCenter;
+    float x1 = bw;
+    float y1 = bh;
 
     x0 = clamp(x0, 0, netW);
     y0 = clamp(y0, 0, netH);
@@ -591,9 +608,9 @@ static NvDsInferParseObjectInfo convertBBox(const float& bx, const float& by, co
     y1 = clamp(y1, 0, netH);
 
     b.left = x0;
-    b.width = clamp(x1 - x0, 0, netW);
+    b.width = clamp(x1, 0, netW);
     b.top = y0;
-    b.height = clamp(y1 - y0, 0, netH);
+    b.height = clamp(y1, 0, netH);
 
     return b;
 }
@@ -607,6 +624,7 @@ static void addBBoxProposal(const float bx, const float by, const float bw, cons
 
     bbi.detectionConfidence = maxProb;
     bbi.classId = maxIndex;
+    // std::cout << bbi.left << " " << bbi.top << " " << bbi.width << " " << bbi.height <<  " " << bbi.detectionConfidence << " " << bbi.classId << std::endl;
     binfo.push_back(bbi);
 }
 
@@ -672,7 +690,8 @@ decodeYoloV5Tensor(
                 bh = pow(sigmoid(bh)*2,2) * anchors[mask[n]*2 + 1];
                 // bw = pow(sigmoid(bw)*2,2) * anchors[n*2];
                 // bh = pow(sigmoid(bh)*2,2) * anchors[n*2 + 1];
-                addBBoxProposal(bx, by, bw, bh, stride, netW, netH, maxIndex, maxProb, binfo);
+                addBBoxProposal(bx, by, bw, bh, stride, netW, netH, maxIndex, cof, binfo);
+                // addBBoxProposal(bx, by, bw, bh, stride, netW, netH, maxIndex, maxProb, binfo);
 
                 // double r_x = x - w/2;
                 // double r_y = y - h/2;

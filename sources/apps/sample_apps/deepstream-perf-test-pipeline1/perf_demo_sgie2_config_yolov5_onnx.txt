@@ -47,13 +47,13 @@ maintain-aspect-ratio=1
 parse-bbox-func-name=NvDsInferParseCustomYolov5
 custom-lib-path=/opt/nvidia/deepstream/deepstream-6.0/lib/libnvds_infercustomparser.so
 
-input-object-min-width=50
-input-object-min-height=50
+#input-object-min-width=50
+#input-object-min-height=50
 
 [class-attrs-all]
 nms-iou-threshold=0.45
-pre-cluster-threshold=0.35
-post-cluster-threshold=0.6
+pre-cluster-threshold=0.25
+post-cluster-threshold=0.4
 #threshold=0.1
 topk=300
 border-color=0;1;0;1
