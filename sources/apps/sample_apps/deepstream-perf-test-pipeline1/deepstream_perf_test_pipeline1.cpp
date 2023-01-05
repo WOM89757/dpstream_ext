@@ -533,6 +533,111 @@ typedef struct
   char label[10];
 } DsExampleObject;
 
+
+
+
+static GstPadProbeReturn
+osd_src_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
+    gpointer ctx)
+{
+    GstBuffer *buf = (GstBuffer *) info->data;
+
+    GstMapInfo inmap = GST_MAP_INFO_INIT;
+    if (!gst_buffer_map (buf, &inmap, GST_MAP_READ)) {
+      GST_ERROR ("input buffer mapinfo failed");
+      // return GST_FLOW_ERROR;
+      return GST_PAD_PROBE_DROP;
+    }
+    NvBufSurface *ip_surf = (NvBufSurface *) inmap.data;
+    gst_buffer_unmap (buf, &inmap);
+
+
+    NvDsFrameMeta *frame_meta = NULL;
+    NvOSD_TextParams *txt_params = NULL;
+    guint vehicle_count = 0;
+    guint person_count = 0;
+    guint safety_count = 0;
+    guint num_rects = 0;
+    guint lable_i = 0;
+    gboolean is_first_object = TRUE;
+    NvDsMetaList *l_frame, *l_obj, *l_class, *l_label;
+    NvDsDisplayMeta *display_meta = NULL;
+    NvDsClassifierMeta * class_meta = NULL;
+    NvDsLabelInfo * label_info = NULL;
+
+    NvDsBatchMeta *batch_meta = gst_buffer_get_nvds_batch_meta (buf);
+    if (!batch_meta) {
+        // No batch meta attached.
+        return GST_PAD_PROBE_OK;
+    }
+
+    for (l_frame = batch_meta->frame_meta_list; l_frame; l_frame = l_frame->next) {
+        frame_meta = (NvDsFrameMeta *) l_frame->data;
+
+        // g_print("osd src frame meta num is %d\n", frame_meta->num_obj_meta);
+        if (frame_meta == NULL) {
+          // Ignore Null frame meta.
+          continue;
+        }
+        // continue;
+        is_first_object = TRUE;
+
+        for (l_obj = frame_meta->obj_meta_list; l_obj; l_obj = l_obj->next) {
+            NvDsObjectMeta *obj_meta = (NvDsObjectMeta *) l_obj->data;
+
+            if (obj_meta == NULL) {
+              // Ignore Null object.
+              continue;
+            }
+            // g_print("%d\n ", (frame_number % frame_interval));
+            if ((is_first_object && !(frame_number % 29))) {
+              g_print("here %d\n", frame_number);
+
+              const char *osd_string = "OSD_SRC";
+              char fileNameStringFull[FILE_NAME_SIZE];
+              const char *save_full_img_path = "/opt/nvidia/deepstream/deepstream-6.0/sources/apps/sample_apps/deepstream-perf-test-pipeline1/full_result_imgs_img/";
+              snprintf (fileNameStringFull, FILE_NAME_SIZE, "%s%s_%d_%d_%d_%s_%dx%d.jpg",
+                  save_full_img_path,
+                  osd_string, frame_number, frame_meta->source_id, 1,
+                  obj_meta->obj_label, ip_surf->surfaceList[frame_meta->batch_id].width, ip_surf->surfaceList[frame_meta->batch_id].height);
+
+              g_print("---------------save image buffer jto file %s\n", fileNameStringFull);
+
+              NvDsObjEncUsrArgs userData = { 0 };
+              /* To be set by user */
+              userData.saveImg = TRUE;
+              userData.attachUsrMeta = FALSE;
+              /* Set if Image scaling Required */
+              userData.scaleImg = FALSE;
+              userData.scaledWidth = 0;
+              userData.scaledHeight = 0;
+              /* Preset */
+              userData.objNum = 1;
+              /* Quality */
+              userData.quality = 80;
+              // userData.fileNameImg = &fileNameString;
+              memcpy(userData.fileNameImg, fileNameStringFull, sizeof(fileNameStringFull));
+              // g_print("file name is %s\n", userData.fileNameImg);
+
+              // memcpy(userData.fileNameImg, fileNameStringFull, sizeof(fileNameStringFull));
+              unsigned dummy_counter = 0;
+              /// Creating a special object meta in order to save a full frame
+              NvDsObjectMeta dummy_obj_meta;
+              dummy_obj_meta.rect_params.width = ip_surf->surfaceList[frame_meta->batch_id].width;
+              dummy_obj_meta.rect_params.height = ip_surf->surfaceList[frame_meta->batch_id].height;
+              dummy_obj_meta.rect_params.top = 0;
+              dummy_obj_meta.rect_params.left = 0;
+              nvds_obj_enc_process((NvDsObjEncCtxHandle)ctx, &userData, ip_surf, &dummy_obj_meta, frame_meta);
+              is_first_object = FALSE;
+          }
+        }
+        frame_number++;
+    }
+
+    nvds_obj_enc_finish((NvDsObjEncCtxHandle)ctx);
+    return GST_PAD_PROBE_OK;
+}
+
 /* osd_sink_pad_buffer_probe  will extract metadata received on OSD sink pad
  * and update params for drawing rectangle, object information etc. */
 
@@ -568,7 +673,7 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
     for (l_frame = batch_meta->frame_meta_list; l_frame; l_frame = l_frame->next) {
         frame_meta = (NvDsFrameMeta *) l_frame->data;
 
-        // g_print("frame meta num is %d\n", frame_meta->num_obj_meta);
+        // g_print("osd frame meta num is %d\n", frame_meta->num_obj_meta);
         if (frame_meta == NULL) {
           // Ignore Null frame meta.
           continue;
@@ -846,6 +951,8 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
     return GST_PAD_PROBE_OK;
 }
 
+
+
 static GstPadProbeReturn
 sgie2_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
     gpointer u_data)
@@ -907,7 +1014,8 @@ sgie2_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
                             // g_print("sgie2 label id: %d , result class id:%d, result label: %s \n ", label_info->label_id, label_info->result_class_id, label_info->result_label);
                             // g_print("sgie2 class id b %d\n", obj_meta->class_id);
                             // g_print("sgie2 class id %d\n", obj_meta->class_id);
-                            if (label_info->label_id == 0 && label_info->result_class_id == SGIE0_CLASS_ID_HEAD) {
+                            if (label_info->label_id == 0) {
+                            // if (label_info->label_id == 0 && label_info->result_class_id == SGIE0_CLASS_ID_HEAD) {
                                 obj_meta->class_id = label_info->result_class_id;
                                 obj_meta->unique_component_id = class_meta->unique_component_id;
                                 // g_print("obj meta label %s, conf %f\n", obj_meta->obj_label, obj_meta->confidence);
@@ -949,6 +1057,7 @@ sgie2_src_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
 
     NvDsFrameMeta *frame_meta = NULL;
     NvOSD_TextParams *txt_params = NULL;
+    NvOSD_RectParams *rect_params = NULL;
     guint vehicle_count = 0;
     guint person_count = 0;
     guint safety_count = 0;
@@ -990,6 +1099,40 @@ sgie2_src_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
 
 
             if (obj_meta->unique_component_id == SGIE2_DETECTOR_UID) {
+
+
+              txt_params = &(obj_meta->text_params);
+              // if (txt_params->display_text)
+              //   g_free (txt_params->display_text);
+
+              // txt_params->display_text = g_malloc0 (MAX_DISPLAY_LEN);
+
+              // g_snprintf (txt_params->display_text, MAX_DISPLAY_LEN, "%s ",
+              //             pgie_classes_str[obj_meta->class_id]);
+
+
+              /* Now set the offsets where the string should appear */
+              // txt_params->x_offset = obj_meta->rect_params.left;
+              // txt_params->y_offset = obj_meta->rect_params.top - 25;
+
+              /* Font , font-color and font-size */
+              txt_params->font_params.font_name = "Serif";
+              txt_params->font_params.font_size = 5;
+              txt_params->font_params.font_color.red = 1.0;
+              txt_params->font_params.font_color.green = 1.0;
+              txt_params->font_params.font_color.blue = 1.0;
+              txt_params->font_params.font_color.alpha = 1.0;
+
+              /* Text background color */
+              txt_params->set_bg_clr = 1;
+              txt_params->text_bg_clr.red = 0.1;
+              txt_params->text_bg_clr.green = 0.3;
+              txt_params->text_bg_clr.blue = 0.4;
+              txt_params->text_bg_clr.alpha = 1.0;
+
+              rect_params = &(obj_meta->rect_params);
+              rect_params->border_width = 1;
+
               // g_print("safety detect result is %s(%d)\n", obj_meta->obj_label, obj_meta->class_id);
               if (obj_meta->class_id == SGIE1_CLASS_ID_UNSAFETYBELT) {
                   safety_count++;
@@ -1121,7 +1264,7 @@ sgie2_src_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
                             * interest. Here, by default all the detected objects are encoded.
                             * For demonstration, we will encode the first object in the frame */
                           /*Main Function Call */
-                          if (obj_meta->parent) {
+                          if (obj_meta->parent && 0) {
                               g_print ("Safety found for parent object %p (type=%s)\n",
                                 obj_meta->parent,  obj_meta->parent->obj_label);
                               nvds_obj_enc_process ((NvDsObjEncCtxHandle)ctx, &userData, ip_surf, obj_meta->parent, frame_meta);
@@ -1422,8 +1565,8 @@ int main(int argc, char* argv[]) {
 
     // ll-lib-file=/opt/nvidia/deepstream/deepstream-6.0/lib/libnvds_nvmultiobjecttracker.so 
 
-    // g_object_set (G_OBJECT (sink), "sync", FALSE, "max-lateness", -1,
-    //               "async", FALSE, NULL);
+    g_object_set (G_OBJECT (sink), "sync", FALSE, "max-lateness", -1,
+                  "async", FALSE, NULL);
     g_object_set (G_OBJECT(sink), "gpu-id", GPU_ID, NULL);
     g_object_set (G_OBJECT(sink), "rows", atoi(argv[1]), NULL);
     g_object_set (G_OBJECT(sink), "columns", atoi(argv[2]), NULL);
@@ -1572,9 +1715,20 @@ int main(int argc, char* argv[]) {
         }
     gst_object_unref (osd_sink_pad);
 
-
     /*Creat Context for Object Encoding */
     NvDsObjEncCtxHandle obj_ctx_handle = nvds_obj_enc_create_context ();
+
+    osd_sink_pad = gst_element_get_static_pad (nvosd, "src");
+    if (!osd_sink_pad)
+        g_print ("Unable to get src pad\n");
+    else {
+        if(msg2p_meta == 0) //generate payload using eventMsgMeta
+            gst_pad_add_probe (osd_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
+                osd_src_pad_buffer_probe, obj_ctx_handle, NULL);
+        }
+    gst_object_unref (osd_sink_pad);
+
+
     if (!obj_ctx_handle) {
       g_print ("Unable to create context\n");
       return -1;

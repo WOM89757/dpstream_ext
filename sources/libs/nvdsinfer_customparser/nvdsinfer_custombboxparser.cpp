@@ -562,88 +562,28 @@ bool NvDsInferParseCustomMrcnnTLTV2 (std::vector<NvDsInferLayerInfo> const &outp
 
 }
 
-double sigmoid(double x) {
-    return (1.0f / (1.0f + exp(-x)));
-}
-
 float clamp(const float val, const float minVal, const float maxVal)
 {
     assert(minVal <= maxVal);
     return std::min(maxVal, std::max(minVal, val));
 }
 
-static NvDsInferParseObjectInfo convertBBox(const float& bx, const float& by, const float& bw,
-                                     const float& bh, const int& stride, const uint& netW,
-                                     const uint& netH)
-{
-    NvDsInferParseObjectInfo b;
-    // Restore coordinates to network input resolution
-    // float xCenter = bx * stride;
-    // float yCenter = by * stride;
-    // float x0 = xCenter - bw / 2;
-    // float y0 = yCenter - bh / 2;
-    // float x1 = x0 + bw;
-    // float y1 = y0 + bh;
 
-    // x0 = clamp(x0, 0, netW);
-    // y0 = clamp(y0, 0, netH);
-    // x1 = clamp(x1, 0, netW);
-    // y1 = clamp(y1, 0, netH);
 
-    // b.left = x0;
-    // b.width = clamp(x1 - x0, 0, netW);
-    // b.top = y0;
-    // b.height = clamp(y1 - y0, 0, netH);
-    
-    float xCenter = bx * stride;
-    float yCenter = by * stride;
-    float x0 = xCenter;
-    float y0 = yCenter;
-    float x1 = bw;
-    float y1 = bh;
-
-    x0 = clamp(x0, 0, netW);
-    y0 = clamp(y0, 0, netH);
-    x1 = clamp(x1, 0, netW);
-    y1 = clamp(y1, 0, netH);
-
-    b.left = x0;
-    b.width = clamp(x1, 0, netW);
-    b.top = y0;
-    b.height = clamp(y1, 0, netH);
-
-    return b;
-}
-
-static void addBBoxProposal(const float bx, const float by, const float bw, const float bh,
-                     const uint stride, const uint& netW, const uint& netH, const int maxIndex,
-                     const float maxProb, std::vector<NvDsInferParseObjectInfo>& binfo)
-{
-    NvDsInferParseObjectInfo bbi = convertBBox(bx, by, bw, bh, stride, netW, netH);
-    if (bbi.width < 1 || bbi.height < 1) return;
-
-    bbi.detectionConfidence = maxProb;
-    bbi.classId = maxIndex;
-    // std::cout << bbi.left << " " << bbi.top << " " << bbi.width << " " << bbi.height <<  " " << bbi.detectionConfidence << " " << bbi.classId << std::endl;
-    binfo.push_back(bbi);
-}
 
 
 static std::vector<NvDsInferParseObjectInfo>
 decodeYoloV5Tensor(
-    const float* detections, const std::vector<int> &mask, const std::vector<float> &anchors,
-    const uint gridSizeW, const uint gridSizeH, const uint stride, const uint numBBoxes,
-    const uint numOutputClasses, const uint& netW,
-    const uint& netH,
+    const float* detections, const uint gridSizeW, const uint gridSizeH,
+    const uint numOutputClasses, const uint& netW, const uint& netH,
     NvDsInferParseDetectionParams const& detectionParams
     );
 
+
 static std::vector<NvDsInferParseObjectInfo>
 decodeYoloV5Tensor(
-    const float* detections, const std::vector<int> &mask, const std::vector<float> &anchors,
-    const uint gridSizeW, const uint gridSizeH, const uint stride, const uint numBBoxes,
-    const uint numOutputClasses, const uint& netW,
-    const uint& netH,
+    const float* detections, const uint gridSizeW, const uint gridSizeH,
+    const uint numOutputClasses, const uint& netW, const uint& netH,
     NvDsInferParseDetectionParams const& detectionParams
     ) {
     
@@ -651,56 +591,53 @@ decodeYoloV5Tensor(
     int item_size = numOutputClasses + 5;
     double cof_threshold = detectionParams.perClassThreshold[0];
     size_t anchor_n = 3;
-    for(u_int n=0;n<anchor_n;++n)
-        for(u_int i=0;i<gridSizeH;++i)
-            for(u_int j=0;j<gridSizeH;++j)
-            {
-                // const float pw = anchors[mask[b] * 2];
-                // const float ph = anchors[mask[b] * 2 + 1];
 
-                double box_prob = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j *item_size+ 4];
-                box_prob = sigmoid(box_prob);
-                // std::cout << box_prob << " ";
+    for(u_int n=0;n<anchor_n;++n)
+    {    
+        for(u_int i=0;i<gridSizeH;++i)
+            for(u_int j=0;j<gridSizeW;++j)
+            {
+                float box_prob = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j *item_size+ 4];
                 if(box_prob < cof_threshold)
                     continue;
                 
-                double bx = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j*item_size + 0];
-                double by = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j*item_size + 1];
-                double bw = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j*item_size + 2];
-                double bh = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j *item_size+ 3];
-               
-                double maxProb = 0;
+                float bx = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j*item_size + 0];
+                float by = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j*item_size + 1];
+                float bw = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j*item_size + 2];
+                float bh = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j*item_size + 3];
+                float maxProb = 0;
                 int maxIndex=0;
+
                 for(int t=5;t<item_size;++t){
-                    double tp= detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j *item_size+ t];
-                    tp = sigmoid(tp);
+                    float tp= detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j *item_size + t];
                     if(tp > maxProb){
                         maxProb  = tp;
-                        maxIndex = t;
+                        maxIndex = t - 5;
                     }
                 }
                 float cof = box_prob * maxProb;                
                 if(cof < cof_threshold)
                     continue;
-                // std::cout << cof <<  " ";
+                
+                NvDsInferParseObjectInfo bbi;
+                float xCenter = bx;
+                float yCenter = by;
 
-                bx = (sigmoid(bx)*2 - 0.5 + j);
-                by = (sigmoid(by)*2 - 0.5 + i);
-                bw = pow(sigmoid(bw)*2,2) * anchors[mask[n]*2];
-                bh = pow(sigmoid(bh)*2,2) * anchors[mask[n]*2 + 1];
-                // bw = pow(sigmoid(bw)*2,2) * anchors[n*2];
-                // bh = pow(sigmoid(bh)*2,2) * anchors[n*2 + 1];
-                addBBoxProposal(bx, by, bw, bh, stride, netW, netH, maxIndex, cof, binfo);
-                // addBBoxProposal(bx, by, bw, bh, stride, netW, netH, maxIndex, maxProb, binfo);
+                bbi.left = xCenter - (bw * 0.5f);
+                bbi.top = yCenter - (bh * 0.5f);
+                bbi.width = clamp(bw, 0, netW);
+                bbi.height = clamp(bh, 0, netH);
+                bbi.left = clamp(bbi.left, 0, netW);
+                bbi.top = clamp(bbi.top, 0, netH);
+                
+                if (bbi.width < 1 || bbi.height < 1) continue;
 
-                // double r_x = x - w/2;
-                // double r_y = y - h/2;
-                // Rect rect = Rect(round(r_x),round(r_y),round(w),round(h));
-                // o_rect.push_back(rect);
-                // o_rect_cof.push_back(cof);
+                bbi.detectionConfidence = cof;
+                bbi.classId = maxIndex;
+                binfo.push_back(bbi);
             }
+    }
     return binfo;
-
 }
 
 #define DIVUP(n, d) ((n) + (d)-1) / (d)
@@ -713,28 +650,14 @@ static bool NvDsInferParseYoloV5(
     const std::vector<float> &anchors,
     const std::vector<std::vector<int>> &masks) {
 
-
-    const uint kNUM_BBOXES = 3;
-
-
     if (outputLayersInfo.size() != 1) {
         std::cerr << "ERROR Mismatch in the number of output layer size."
                   << "Expected 1 output size, detected in the network of yolov5 :"
                   << outputLayersInfo.size() << std::endl;
         return false;
     }
-
-    // static NvDsInferDimsCHW outputLayerDims;
-    // getDimsCHWFromDims(outputLayerDims, outputLayersInfo[0].inferDims);
     
     u_int NUM_CLASSES_YOLO  = outputLayersInfo[0].inferDims.d[1] - 5;
-    // u_int num_width = outputLayersInfo[0].inferDims.d[0];
-    // u_int num_height = outputLayersInfo[0].inferDims.d[1];
-    // std::cout <<  "network is : " << num_width << "x" << num_height << ", classes is " << NUM_CLASSES_YOLO << std::endl;
-
-    // const float *data = (float * ) outputLayersInfo[0].buffer;
-    // const float threshold = detectionParams.perClassThreshold[0];
-
 
     if (NUM_CLASSES_YOLO != detectionParams.numClassesConfigured)
     {
@@ -744,27 +667,20 @@ static bool NvDsInferParseYoloV5(
     }
 
     std::vector<NvDsInferParseObjectInfo> objects;
-    // std::vector<int> grid_array = {52, 26, 13};
     std::vector<int> grid_array = {13, 26, 52};
     float* output_yolo = (float*)(outputLayersInfo[0].buffer);
-    for (uint idx = 0; idx < masks.size(); ++idx) {
+    for (uint idx = 0; idx < masks.size() && idx < 3; ++idx) {
 
         const uint gridSizeH = grid_array[idx];
         const uint gridSizeW = grid_array[idx];
-        const uint stride = DIVUP(networkInfo.width, gridSizeW);
-        assert(stride == DIVUP(networkInfo.height, gridSizeH));
         if (idx > 0) {
-            output_yolo = output_yolo + (3 * grid_array[idx - 1] * grid_array[idx -1] * (NUM_CLASSES_YOLO + 5) + 1);
+            output_yolo = output_yolo + (3 * grid_array[idx - 1] * grid_array[idx -1] * (NUM_CLASSES_YOLO + 5));
         }
-
         std::vector<NvDsInferParseObjectInfo> outObjs =
-            decodeYoloV5Tensor((const float*)(output_yolo), masks[idx], anchors, gridSizeW, gridSizeH, stride, kNUM_BBOXES,
+            decodeYoloV5Tensor((const float*)(output_yolo), gridSizeW, gridSizeH,
                        NUM_CLASSES_YOLO, networkInfo.width, networkInfo.height, detectionParams);
         objects.insert(objects.end(), outObjs.begin(), outObjs.end());
-        // std::cout << "objects size " << objects.size() << std::endl;
     }
-
-
     objectList = objects;
 
     return true;
