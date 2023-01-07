@@ -24,8 +24,8 @@
 gpu-id=0
 net-scale-factor=0.0039215697906911373
 
-onnx-file=/opt/nvidia/deepstream/deepstream-6.0/project/models/yolov5-safety-belt.onnx
-model-engine-file=/opt/nvidia/deepstream/deepstream-6.0/project/models/yolov5-safety-belt.onnx_b1_gpu0_fp32.engine
+onnx-file=/opt/nvidia/deepstream/deepstream-6.0/project/models/yolov5-safety-belt-ori-sim.onnx
+model-engine-file=/opt/nvidia/deepstream/deepstream-6.0/project/models/yolov5-safety-belt-ori-sim.onnx_b1_gpu0_fp32.engine
 labelfile-path=/opt/nvidia/deepstream/deepstream-6.0/project/models/yolov5-safety-belt-labels.txt
 
 

@@ -81,25 +81,11 @@ bool NvDsInferParseCustomMrcnnTLTV2 (std::vector<NvDsInferLayerInfo> const &outp
                                    NvDsInferParseDetectionParams const &detectionParams,
                                    std::vector<NvDsInferInstanceMaskInfo> &objectList);
 
-extern "C" bool NvDsInferParseCustomYolo_17(
-    std::vector<NvDsInferLayerInfo> const& outputLayersInfo, NvDsInferNetworkInfo const& networkInfo,
-    NvDsInferParseDetectionParams const& detectionParams, std::vector<NvDsInferParseObjectInfo>& objectList);
-
-
-extern "C"
-bool NvDsInferParseCustomYolov5 (
-         std::vector<NvDsInferLayerInfo> const &outputLayersInfo,
-         NvDsInferNetworkInfo  const &networkInfo,
-         NvDsInferParseDetectionParams const &detectionParams,
-         std::vector<NvDsInferObjectDetectionInfo> &objectList);
-
 static bool NvDsInferParseYoloV5(
     std::vector<NvDsInferLayerInfo> const& outputLayersInfo,
     NvDsInferNetworkInfo const& networkInfo,
     NvDsInferParseDetectionParams const& detectionParams,
-    std::vector<NvDsInferParseObjectInfo>& objectList,
-    const std::vector<float> &anchors,
-    const std::vector<std::vector<int>> &masks);
+    std::vector<NvDsInferParseObjectInfo>& objectList);
 
 extern "C"
 bool NvDsInferParseCustomResnet (std::vector<NvDsInferLayerInfo> const &outputLayersInfo,
@@ -568,87 +554,12 @@ float clamp(const float val, const float minVal, const float maxVal)
     return std::min(maxVal, std::max(minVal, val));
 }
 
-
-
-
-
-static std::vector<NvDsInferParseObjectInfo>
-decodeYoloV5Tensor(
-    const float* detections, const uint gridSizeW, const uint gridSizeH,
-    const uint numOutputClasses, const uint& netW, const uint& netH,
-    NvDsInferParseDetectionParams const& detectionParams
-    );
-
-
-static std::vector<NvDsInferParseObjectInfo>
-decodeYoloV5Tensor(
-    const float* detections, const uint gridSizeW, const uint gridSizeH,
-    const uint numOutputClasses, const uint& netW, const uint& netH,
-    NvDsInferParseDetectionParams const& detectionParams
-    ) {
-    
-    std::vector<NvDsInferParseObjectInfo> binfo;
-    int item_size = numOutputClasses + 5;
-    double cof_threshold = detectionParams.perClassThreshold[0];
-    size_t anchor_n = 3;
-
-    for(u_int n=0;n<anchor_n;++n)
-    {    
-        for(u_int i=0;i<gridSizeH;++i)
-            for(u_int j=0;j<gridSizeW;++j)
-            {
-                float box_prob = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j *item_size+ 4];
-                if(box_prob < cof_threshold)
-                    continue;
-                
-                float bx = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j*item_size + 0];
-                float by = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j*item_size + 1];
-                float bw = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j*item_size + 2];
-                float bh = detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j*item_size + 3];
-                float maxProb = 0;
-                int maxIndex=0;
-
-                for(int t=5;t<item_size;++t){
-                    float tp= detections[n*gridSizeH*gridSizeH*item_size + i*gridSizeH*item_size + j *item_size + t];
-                    if(tp > maxProb){
-                        maxProb  = tp;
-                        maxIndex = t - 5;
-                    }
-                }
-                float cof = box_prob * maxProb;                
-                if(cof < cof_threshold)
-                    continue;
-                
-                NvDsInferParseObjectInfo bbi;
-                float xCenter = bx;
-                float yCenter = by;
-
-                bbi.left = xCenter - (bw * 0.5f);
-                bbi.top = yCenter - (bh * 0.5f);
-                bbi.width = clamp(bw, 0, netW);
-                bbi.height = clamp(bh, 0, netH);
-                bbi.left = clamp(bbi.left, 0, netW);
-                bbi.top = clamp(bbi.top, 0, netH);
-                
-                if (bbi.width < 1 || bbi.height < 1) continue;
-
-                bbi.detectionConfidence = cof;
-                bbi.classId = maxIndex;
-                binfo.push_back(bbi);
-            }
-    }
-    return binfo;
-}
-
-#define DIVUP(n, d) ((n) + (d)-1) / (d)
-
 static bool NvDsInferParseYoloV5(
     std::vector<NvDsInferLayerInfo> const& outputLayersInfo,
     NvDsInferNetworkInfo const& networkInfo,
     NvDsInferParseDetectionParams const& detectionParams,
-    std::vector<NvDsInferParseObjectInfo>& objectList,
-    const std::vector<float> &anchors,
-    const std::vector<std::vector<int>> &masks) {
+    std::vector<NvDsInferParseObjectInfo>& objectList
+    ) {
 
     if (outputLayersInfo.size() != 1) {
         std::cerr << "ERROR Mismatch in the number of output layer size."
@@ -667,19 +578,52 @@ static bool NvDsInferParseYoloV5(
     }
 
     std::vector<NvDsInferParseObjectInfo> objects;
-    std::vector<int> grid_array = {13, 26, 52};
     float* output_yolo = (float*)(outputLayersInfo[0].buffer);
-    for (uint idx = 0; idx < masks.size() && idx < 3; ++idx) {
+    uint netW = networkInfo.width;
+    uint netH = networkInfo.height;
+    double cof_threshold = detectionParams.perClassThreshold[0];
+    uint item_size = outputLayersInfo[0].inferDims.d[1];
+    for (uint index = 0; index < outputLayersInfo[0].inferDims.d[0]; index++) {
+        float box_prob = output_yolo[index * item_size + 4];
 
-        const uint gridSizeH = grid_array[idx];
-        const uint gridSizeW = grid_array[idx];
-        if (idx > 0) {
-            output_yolo = output_yolo + (3 * grid_array[idx - 1] * grid_array[idx -1] * (NUM_CLASSES_YOLO + 5));
+        if(box_prob < cof_threshold)
+            continue;
+        
+        float bx = output_yolo[index * item_size + 0];
+        float by = output_yolo[index * item_size + 1];
+        float bw = output_yolo[index * item_size + 2];
+        float bh = output_yolo[index * item_size + 3];
+        float maxProb = 0;
+        int maxIndex=0;
+
+        for(uint t = 5;t < outputLayersInfo[0].inferDims.d[1]; ++t){
+            float tp= output_yolo[index * item_size + t];
+            if(tp > maxProb){
+                maxProb  = tp;
+                maxIndex = t - 5;
+            }
         }
-        std::vector<NvDsInferParseObjectInfo> outObjs =
-            decodeYoloV5Tensor((const float*)(output_yolo), gridSizeW, gridSizeH,
-                       NUM_CLASSES_YOLO, networkInfo.width, networkInfo.height, detectionParams);
-        objects.insert(objects.end(), outObjs.begin(), outObjs.end());
+        float cof = box_prob * maxProb;                
+        if(cof < cof_threshold)
+            continue;
+        
+        NvDsInferParseObjectInfo bbi;
+        float xCenter = bx;
+        float yCenter = by;
+
+        bbi.left = xCenter - (bw * 0.5f);
+        bbi.top = yCenter - (bh * 0.5f);
+        bbi.width = clamp(bw, 0, netW);
+        bbi.height = clamp(bh, 0, netH);
+        bbi.left = clamp(bbi.left, 0, netW);
+        bbi.top = clamp(bbi.top, 0, netH);
+        
+        if (bbi.width < 1 || bbi.height < 1) continue;
+
+        bbi.detectionConfidence = cof;
+        bbi.classId = maxIndex;
+        objects.push_back(bbi);
+
     }
     objectList = objects;
 
@@ -693,17 +637,8 @@ bool NvDsInferParseCustomYolov5 (
          NvDsInferParseDetectionParams const &detectionParams,
          std::vector<NvDsInferObjectDetectionInfo> &objectList) {
 
-
-    static const std::vector<float> kANCHORS = {
-        10.0, 13.0, 16.0,  30.0,  33.0, 23.0,  30.0,  61.0,  62.0,
-        45.0, 59.0, 119.0, 116.0, 90.0, 156.0, 198.0, 373.0, 326.0};
-    static const std::vector<std::vector<int>> kMASKS = {
-        {6, 7, 8},
-        {3, 4, 5},
-        {0, 1, 2}};
     return NvDsInferParseYoloV5 (
-        outputLayersInfo, networkInfo, detectionParams, objectList,
-        kANCHORS, kMASKS);
+        outputLayersInfo, networkInfo, detectionParams, objectList);
 
     return true;
 }

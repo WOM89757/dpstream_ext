@@ -68,8 +68,10 @@
 /* The muxer output resolution must be set if the input streams will be of
  * different resolution. The muxer will scale all the input frames to this
  * resolution. */
-#define MUXER_OUTPUT_WIDTH 1280
-#define MUXER_OUTPUT_HEIGHT 720
+#define MUXER_OUTPUT_WIDTH 1920
+#define MUXER_OUTPUT_HEIGHT 1080
+// #define MUXER_OUTPUT_WIDTH 1280
+// #define MUXER_OUTPUT_HEIGHT 720
 
 /* Muxer batch formation timeout, for e.g. 40 millisec. Should ideally be set
  * based on the fastest source's framerate. */
@@ -589,6 +591,8 @@ osd_src_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
               // Ignore Null object.
               continue;
             }
+            // if (obj_meta->unique_component_id != SGIE2_DETECTOR_UID)
+            //   continue;
             // g_print("%d\n ", (frame_number % frame_interval));
             if ((is_first_object && !(frame_number % 29))) {
               g_print("here %d\n", frame_number);
@@ -1420,7 +1424,7 @@ int main(int argc, char* argv[]) {
 
     /* Create gstreamer elements */
     /* Create Pipeline element that will form a connection of other elements */
-    pipeline = gst_pipeline_new("perf-demo-pipeline");
+    pipeline = gst_pipeline_new("perf-test-pipeline1");
 
     /* Source element for reading from the file */
     source = gst_element_factory_make("filesrc", "file-source");
@@ -1565,8 +1569,8 @@ int main(int argc, char* argv[]) {
 
     // ll-lib-file=/opt/nvidia/deepstream/deepstream-6.0/lib/libnvds_nvmultiobjecttracker.so 
 
-    g_object_set (G_OBJECT (sink), "sync", FALSE, "max-lateness", -1,
-                  "async", FALSE, NULL);
+    // g_object_set (G_OBJECT (sink), "sync", FALSE, "max-lateness", -1,
+    //               "async", FALSE, NULL);
     g_object_set (G_OBJECT(sink), "gpu-id", GPU_ID, NULL);
     g_object_set (G_OBJECT(sink), "rows", atoi(argv[1]), NULL);
     g_object_set (G_OBJECT(sink), "columns", atoi(argv[2]), NULL);

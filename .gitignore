@@ -10,3 +10,4 @@ deepstream-mrcnn-app
 deepstream-seg
 *wts
 *.jpg
+deepstream-safety-violation-event-detect-pipeline
